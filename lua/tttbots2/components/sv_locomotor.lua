@@ -13,21 +13,7 @@ local COMPLETION_DIST_HORIZONTAL = 20
 local COMPLETION_DIST_VERTICAL = 35
 
 
-function BotLocomotor:New(bot)
-    local newLocomotor = {}
-    setmetatable(newLocomotor, {
-        __index = function(t, k) return BotLocomotor[k] end,
-    })
-    newLocomotor:Initialize(bot)
-
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized locomotor for bot " .. bot:Nick())
-    end
-
-    return newLocomotor
-end
+TTTBots.Lib.MakeComponentNew(BotLocomotor, "Locomotor")
 
 --- Create and return a get and set function on variable varname, defaulting to the 'default' value
 ---@param varname string

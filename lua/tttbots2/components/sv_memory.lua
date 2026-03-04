@@ -83,20 +83,7 @@ FORGET.GetRememberTime = function(ply)
 end
 
 
-function Memory:New(bot)
-    local newMemory = {}
-    setmetatable(newMemory, {
-        __index = function(t, k) return Memory[k] end,
-    })
-    newMemory:Initialize(bot)
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized Memory for bot " .. bot:Nick())
-    end
-
-    return newMemory
-end
+TTTBots.Lib.MakeComponentNew(Memory, "Memory")
 
 local function shouldUseRadar()
     local rand = math.random(1, 100)

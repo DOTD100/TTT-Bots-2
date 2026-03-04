@@ -26,20 +26,7 @@ local function SafeSelectWeapon(bot, className)
     return ok
 end
 
-function BotInventory:New(bot)
-    local newInventory = {}
-    setmetatable(newInventory, {
-        __index = function(t, k) return BotInventory[k] end,
-    })
-    newInventory:Initialize(bot)
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized Inventory for bot " .. bot:Nick())
-    end
-
-    return newInventory
-end
+TTTBots.Lib.MakeComponentNew(BotInventory, "Inventory")
 
 function BotInventory:Initialize(bot)
     -- print("Initializing")

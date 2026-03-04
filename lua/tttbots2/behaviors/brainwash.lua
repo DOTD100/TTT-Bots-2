@@ -15,76 +15,26 @@ Brainwash.Interruptible = true
 
 local STATUS = TTTBots.STATUS
 
---- Rate how isolated 'other' is. Higher = more isolated = better target.
----@param bot Bot
----@param other Player
----@return number
-function Brainwash.RateIsolation(bot, other)
-    return lib.RateIsolation(bot, other)
-end
-
---- Find the best isolated target to brainwash.
----@param bot Bot
----@return Player?
----@return number
-function Brainwash.FindTarget(bot)
-    return lib.FindIsolatedTarget(bot)
-end
-
-function Brainwash.ClearTarget(bot)
-    bot.BrainwashTarget = nil
-    bot.BrainwashScore = nil
-end
-
---- Set the brainwash target, or find one if nil.
----@param bot Bot
----@param target Player?
----@param isolationScore number?
-function Brainwash.SetTarget(bot, target, isolationScore)
-    bot.BrainwashTarget = target or Brainwash.FindTarget(bot)
-    bot.BrainwashScore = isolationScore or (bot.BrainwashTarget and Brainwash.RateIsolation(bot, bot.BrainwashTarget) or 0)
-end
-
-function Brainwash.GetTarget(bot)
-    return bot.BrainwashTarget
-end
-
---- Validate that target is alive and not already a slave/brainwasher.
----@param bot Bot
----@param target? Player
----@return boolean
-function Brainwash.ValidateTarget(bot, target)
-    target = target or Brainwash.GetTarget(bot)
-    if not (target and IsValid(target) and lib.IsPlayerAlive(target)) then return false end
-    -- Don't try to brainwash someone who's already a slave or brainwasher
-    if ROLE_SLAVE and target:GetSubRole() == ROLE_SLAVE then return false end
-    if ROLE_BRAINWASHER and target:GetSubRole() == ROLE_BRAINWASHER then return false end
-    -- Don't target teammates
-    if target:GetTeam() == bot:GetTeam() then return false end
-    return true
-end
-
---- Periodically check for a better (more isolated) target.
----@param bot Bot
-function Brainwash.CheckForBetterTarget(bot)
-    local currentScore = bot.BrainwashScore or -math.huge
-    local alternative, altScore = Brainwash.FindTarget(bot)
-
-    if not alternative then return end
-    if not Brainwash.ValidateTarget(bot, alternative) then return end
-
-    if altScore and altScore - currentScore >= 1 then
-        Brainwash.SetTarget(bot, alternative, altScore)
-    end
-end
-
---- Should the bot try to start brainwashing?
----@param bot Bot
----@return boolean
-function Brainwash.ShouldStartBrainwashing(bot)
-    local chance = math.random(0, 100) <= 3
-    return TTTBots.Match.IsRoundActive() and chance
-end
+-- Target management (shared pattern via factory, with extra validation for role checks)
+local _t = lib.MakeTargetFunctions({
+    targetField = "BrainwashTarget",
+    scoreField = "BrainwashScore",
+    validateExtra = function(bot, target)
+        -- Don't try to brainwash someone who's already a slave or brainwasher
+        if ROLE_SLAVE and target:GetSubRole() == ROLE_SLAVE then return false end
+        if ROLE_BRAINWASHER and target:GetSubRole() == ROLE_BRAINWASHER then return false end
+        -- Don't target teammates
+        if target:GetTeam() == bot:GetTeam() then return false end
+        return true
+    end,
+})
+Brainwash.RateIsolation        = _t.RateIsolation
+Brainwash.FindTarget            = _t.FindTarget
+Brainwash.SetTarget             = _t.SetTarget
+Brainwash.GetTarget             = _t.GetTarget
+Brainwash.ClearTarget           = _t.ClearTarget
+Brainwash.ValidateTarget        = _t.ValidateTarget
+Brainwash.CheckForBetterTarget  = _t.CheckForBetterTarget
 
 --- Validate: only runs when the bot has the slavedeagle and a valid target (or should start looking).
 ---@param bot Bot
@@ -94,7 +44,8 @@ function Brainwash.Validate(bot)
     if bot.attackTarget ~= nil then return false end
     local inv = bot:BotInventory()
     if not (inv and inv:GetSlaveDeagle()) then return false end
-    return Brainwash.ValidateTarget(bot) or Brainwash.ShouldStartBrainwashing(bot)
+    local chance = math.random(0, 100) <= 3
+    return Brainwash.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and chance)
 end
 
 ---@param bot Bot

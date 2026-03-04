@@ -5,20 +5,7 @@ local lib = TTTBots.Lib
 ---@class CObstacleTracker : Component
 local BotObstacleTracker = TTTBots.Components.ObstacleTracker
 
-function BotObstacleTracker:New(bot)
-    local newObstacleTracker = {}
-    setmetatable(newObstacleTracker, {
-        __index = function(t, k) return BotObstacleTracker[k] end,
-    })
-    newObstacleTracker:Initialize(bot)
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized ObstacleTracker for bot " .. bot:Nick())
-    end
-
-    return newObstacleTracker
-end
+TTTBots.Lib.MakeComponentNew(BotObstacleTracker, "ObstacleTracker")
 
 function BotObstacleTracker:Initialize(bot)
     -- print("Initializing")

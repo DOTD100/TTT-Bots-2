@@ -30,7 +30,6 @@ local function includeServer()
     include("tttbots2/lib/sv_pathmanager.lua")
     include("tttbots2/lib/sv_debug.lua")
     include("tttbots2/lib/sv_miscnetwork.lua")
-    include("tttbots2/lib/sv_debug.lua")
     include("tttbots2/lib/sv_popularnavs.lua")
     include("tttbots2/lib/sv_spots.lua")
     include("tttbots2/lib/sv_plancoordinator.lua")
@@ -73,7 +72,6 @@ local function includeShared(isReload)
     includeSharedFile("tttbots2/lib/sh_match.lua", isReload)
     includeSharedFile("tttbots2/data/sh_traits.lua", isReload)
     includeSharedFile("tttbots2/lib/sh_languages.lua", isReload)
-    includeSharedFile("tttbots2/lib/sh_botlib.lua", isReload)
 end
 
 -- These first two need to run on both realms so we can AddCSLuaFile.

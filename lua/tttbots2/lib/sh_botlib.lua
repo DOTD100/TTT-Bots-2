@@ -176,6 +176,84 @@ function TTTBots.Lib.FindIsolatedTarget(bot)
     return bestTarget, bestIsolation
 end
 
+--- Creates standard target-management functions for a behavior that stalks/hunts isolated players.
+--- Returns a table of functions: RateIsolation, FindTarget, SetTarget, GetTarget, ClearTarget, ValidateTarget, CheckForBetterTarget.
+---@param config table { targetField: string, scoreField?: string, findTarget?: function, validateExtra?: function }
+---@return table
+---@realm server
+function TTTBots.Lib.MakeTargetFunctions(config)
+    local targetField = config.targetField
+    local scoreField = config.scoreField
+    local findTarget = config.findTarget or TTTBots.Lib.FindIsolatedTarget
+    local validateExtra = config.validateExtra
+
+    local funcs = {}
+
+    function funcs.RateIsolation(bot, other)
+        return TTTBots.Lib.RateIsolation(bot, other)
+    end
+
+    function funcs.FindTarget(bot)
+        return findTarget(bot)
+    end
+
+    function funcs.ClearTarget(bot)
+        bot[targetField] = nil
+        if scoreField then bot[scoreField] = nil end
+    end
+
+    function funcs.SetTarget(bot, target, isolationScore)
+        bot[targetField] = target or funcs.FindTarget(bot)
+        if scoreField then
+            bot[scoreField] = isolationScore
+                or (bot[targetField] and funcs.RateIsolation(bot, bot[targetField]) or 0)
+        end
+    end
+
+    function funcs.GetTarget(bot)
+        return bot[targetField]
+    end
+
+    function funcs.ValidateTarget(bot, target)
+        target = target or funcs.GetTarget(bot)
+        if not (target and IsValid(target) and TTTBots.Lib.IsPlayerAlive(target)) then
+            return false
+        end
+        if validateExtra then
+            return validateExtra(bot, target)
+        end
+        return true
+    end
+
+    function funcs.CheckForBetterTarget(bot)
+        local currentScore = (scoreField and bot[scoreField]) or -math.huge
+        local alternative, altScore = funcs.FindTarget(bot)
+        if not alternative then return end
+        if not funcs.ValidateTarget(bot, alternative) then return end
+        if altScore and altScore - currentScore >= 1 then
+            funcs.SetTarget(bot, alternative, altScore)
+        end
+    end
+
+    return funcs
+end
+
+--- Creates a standard :New(bot) constructor for a component class.
+---@param componentClass table The component class table
+---@param componentName string Human-readable name for debug output
+---@realm server
+function TTTBots.Lib.MakeComponentNew(componentClass, componentName)
+    componentClass.New = function(self, bot)
+        local instance = {}
+        setmetatable(instance, { __index = function(t, k) return componentClass[k] end })
+        instance:Initialize(bot)
+        if TTTBots.Lib.GetConVarBool("debug_misc") then
+            print("Initialized " .. componentName .. " for bot " .. bot:Nick())
+        end
+        return instance
+    end
+end
+
 ---Returns a table of living bots, according to the IsPlayerAlive cache.
 ---@return table<Bot>
 ---@realm shared
@@ -731,19 +809,7 @@ function TTTBots.Lib.RandomWeighted(options)
     end
 end
 
---- Similar to GetAllWitnesses, but internally uses CanSee instead of CanSeeArc (so 360*)
----@realm shared
-function TTTBots.Lib.GetAllWitnesses360(pos)
-    local witnesses = {}
-    for _, ply in ipairs(TTTBots.Lib.GetAlivePlayers()) do
-        if IsValid(ply) and ply:VisibleVec(pos) then
-            witnesses[#witnesses + 1] = ply
-        end
-    end
-    return witnesses
-end
-
---- Like GetAllWitnesses360, but uses the :Visible function instead of CanSee, for greater optimization.
+--- Returns all players that can see the given position, using :VisibleVec for optimization.
 ---@param pos Vector
 ---@param nonTeammatesOnly? boolean
 ---@param caller? Player The player to use for teammate comparison

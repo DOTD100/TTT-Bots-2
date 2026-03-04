@@ -75,20 +75,7 @@ BotMorality.Thresholds = {
     Innocent = -5,
 }
 
-function BotMorality:New(bot)
-    local newMorality = {}
-    setmetatable(newMorality, {
-        __index = function(t, k) return BotMorality[k] end,
-    })
-    newMorality:Initialize(bot)
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized Morality for bot " .. bot:Nick())
-    end
-
-    return newMorality
-end
+TTTBots.Lib.MakeComponentNew(BotMorality, "Morality")
 
 function BotMorality:Initialize(bot)
     -- print("Initializing")

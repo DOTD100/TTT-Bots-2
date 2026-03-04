@@ -5,20 +5,7 @@ local lib = TTTBots.Lib
 ---@class CChatter : Component
 local BotChatter = TTTBots.Components.Chatter
 
-function BotChatter:New(bot)
-    local newChatter = {}
-    setmetatable(newChatter, {
-        __index = function(t, k) return BotChatter[k] end,
-    })
-    newChatter:Initialize(bot)
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized Chatter for bot " .. bot:Nick())
-    end
-
-    return newChatter
-end
+TTTBots.Lib.MakeComponentNew(BotChatter, "Chatter")
 
 function BotChatter:Initialize(bot)
     -- print("Initializing")

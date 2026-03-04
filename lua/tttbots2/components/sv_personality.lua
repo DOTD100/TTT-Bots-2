@@ -7,20 +7,7 @@ local BotPersonality = TTTBots.Components.Personality
 
 BotPersonality.Traits = TTTBots.Traits
 
-function BotPersonality:New(bot)
-    local newPersonality = {}
-    setmetatable(newPersonality, {
-        __index = function(t, k) return BotPersonality[k] end,
-    })
-    newPersonality:Initialize(bot)
-
-    local dbg = lib.GetConVarBool("debug_misc")
-    if dbg then
-        print("Initialized Personality for bot " .. bot:Nick())
-    end
-
-    return newPersonality
-end
+TTTBots.Lib.MakeComponentNew(BotPersonality, "Personality")
 
 function BotPersonality:Initialize(bot)
     -- print("Initializing")
