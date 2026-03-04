@@ -181,7 +181,7 @@ function Attack.Engage(bot, targetPos)
 
     local distToTarget = bot:GetPos():Distance(target:GetPos())
 
-    -- 🗡️ ASSASSIN KNIFE LOGIC: Bots with useKnives trait prefer backstabs
+    -- Bots with useKnives trait prefer backstabs (Assassin)
     local isAssassin = bot:GetTraitBool("useKnives")
     if isAssassin and target:IsPlayer() and distToTarget < 500 then
         -- Check if we have a knife weapon

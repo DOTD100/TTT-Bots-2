@@ -218,8 +218,8 @@ timer.Create("TTTBots.PickupLoot.GrabNearby", 0.5, 0, function()
             local wasTraitorWep = PickupLoot.IsTraitorWeapon(loot)
             local wepName = loot:GetPrintName() or loot:GetClass() or "unknown weapon"
 
-            -- Try to pick it up
-            loot:Use(bot, bot, USE_ON, 1)
+            -- Try to pick it up (TTT2 SafePickupWeapon or vanilla Entity:Use)
+            lib.PickupWeapon(bot, loot)
 
             -- Check if pickup succeeded (weapon now has the bot as owner)
             timer.Simple(0.2, function()

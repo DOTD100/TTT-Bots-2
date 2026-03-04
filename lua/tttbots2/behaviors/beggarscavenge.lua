@@ -143,9 +143,8 @@ function BeggarScavenge.OnRunning(bot)
 
         local dist = bot:GetPos():Distance(targetPos)
         if dist < BeggarScavenge.PICKUP_RANGE then
-            -- Press Use on the item to trigger the actual pickup system.
-            -- TTT2's weapon pickup requires Use; just walking over it won't work.
-            target:Use(bot, bot, USE_ON, 1)
+            -- Use TTT2's SafePickupWeapon when available, fall back to Entity:Use for vanilla TTT.
+            lib.PickupWeapon(bot, target)
             bot.beggarTargetItem = nil
         end
 

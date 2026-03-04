@@ -819,6 +819,25 @@ function TTTBots.Lib.IsTTT2()
     return TTT2
 end
 
+--- Safely pick up a weapon entity for a bot.
+--- Uses TTT2's SafePickupWeapon when available, falls back to Entity:Use for vanilla TTT.
+---@param bot Player The bot picking up the weapon
+---@param wep Entity The weapon entity on the ground
+---@return boolean success Whether the pickup was attempted
+---@realm server
+function TTTBots.Lib.PickupWeapon(bot, wep)
+    if not (IsValid(bot) and IsValid(wep) and wep:IsWeapon()) then return false end
+    if TTT2 and bot.SafePickupWeapon then
+        -- TTT2: use the proper pickup pipeline (handles inventory slots, sounds, etc.)
+        local result = bot:SafePickupWeapon(wep, false, true, true, nil)
+        return result ~= nil
+    else
+        -- Vanilla TTT: fall back to Entity:Use which triggers engine pickup
+        wep:Use(bot, bot, USE_ON, 1)
+        return true
+    end
+end
+
 ---@realm shared
 local DOOR_CLASSES = {
     ["func_door"] = true,
