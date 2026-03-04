@@ -262,7 +262,7 @@ local LoadLang = function()
 
 
     local ATTACK = ACTS.ATTACK
-    RegisterCategory(f("Plan.%s", ATTACKANY), P.CRITICAL) -- When a traitor bot is going to attack a player/bot.
+    RegisterCategory(f("Plan.%s", ATTACK), P.CRITICAL) -- When a traitor bot is going to attack a player/bot.
     Line("Je vais attaquer {{player}}.", A.Default)
     Line("J'ai repéré {{player}}.", A.Default)
     Line("Je vais m'occuper de {{player}}.", A.Default)
@@ -342,8 +342,23 @@ local LoadLang = function()
 
 
     local IGNORE = ACTS.IGNORE
-    RegisterCategory(f("Plan.%s", DEFEND), P.CRITICAL) -- When a traitor bot is going to defend an area.
-    Line("Je vais défendre cette zone.", A.Default)
+    RegisterCategory(f("Plan.%s", IGNORE), P.CRITICAL) -- When a traitor bot wants to ignore the plans.
+    Line("J'ai envie de faire mon propre truc cette fois.", A.Default)
+    Line("J'ai envie de faire mon propre truc cette fois.", A.Default)
+    Line("Faire cavalier seul, ça a l'air sympa.", A.Default)
+    Line("On change un peu, je ne suis pas le plan.", A.Default)
+    Line("Bah, les plans c'est surcôté de toute façon.", A.Casual)
+    Line("Je vais improviser cette fois.", A.Casual)
+    Line("Qui se soucie des plans ? Je fais ce que je veux.", A.Bad)
+    Line("Oubliez le plan, j'ai mes propres idées.", A.Bad)
+    Line("Les plans c'est dur. Je vais juste faire un truc.", A.Dumb)
+    Line("C'était quoi le plan déjà ? Bah, tant pis.", A.Dumb)
+    Line("Les plans c'est pour les losers. Je fais à ma façon !", A.Hothead)
+    Line("Je ne suis pas les plans, j'en crée !", A.Hothead)
+    Line("J'ignore le plan. C'est plus marrant de vous surprendre.", A.Sus)
+    Line("Qui a besoin d'un plan ? Pas moi, c'est sûr.", A.Sus)
+    Line("Les plans c'est pour les faibles. Place à l'audace.", A.Tryhard)
+    Line("Stratégie ? Non, l'improvisation est la clé de la victoire.", A.Tryhard)
 
 
     -----------------------------------------------------------
@@ -528,6 +543,29 @@ local LoadLang = function()
     RegisterCategory("DefusingSuccessful", P.IMPORTANT) -- When an innocent bot is defusing a C4.
     Line("Je l'ai désamorcée !", A.Default)
 
+    RegisterCategory("PickedUpTraitorWeapon", P.IMPORTANT) -- When a bot picks up a traitor weapon off the ground.
+    Line("Je viens de ramasser une arme de traître, ne me tuez pas !", A.Default)
+    Line("J'ai trouvé une arme de traître par terre.", A.Default)
+    Line("j'ai pris une arme de traître au sol, tirez pas", A.Casual)
+
+    RegisterCategory("AmnesiacTransformed", P.IMPORTANT) -- When an Amnesiac bot confirms a body and gets a new role.
+    Line("Je me souviens de qui je suis !", A.Default)
+    Line("J'ai confirmé un corps et tout m'est revenu.", A.Default)
+    Line("attends je me souviens de tout maintenant", A.Casual)
+
+    RegisterCategory("CopycatTransformed", P.IMPORTANT) -- When a Copycat bot uses The Files to change role.
+    Line("Place à une nouvelle identité.", A.Default)
+    Line("J'ai étudié les dossiers. Je sais quoi faire.", A.Default)
+    Line("Nouveau rôle, nouveau moi.", A.Default)
+    Line("Les dossiers m'ont tout révélé.", A.Default)
+    Line("je viens de lire les dossiers... intéressant", A.Casual)
+    Line("on change un peu", A.Casual)
+    Line("mdr c'est l'heure d'être quelqu'un d'autre", A.Casual)
+    Line("Maintenant j'ai tout le pouvoir qu'il me faut.", A.Bad)
+    Line("Vos secrets sont les miens.", A.Bad)
+    Line("c'est quoi ces dossiers ?? oh cool", A.Dumb)
+    Line("Assez étudié. Place à l'action.", A.Hothead)
+    Line("Enfin. Un rôle digne de ce nom.", A.Tryhard)
 
 
     -----------------------------------------------------------

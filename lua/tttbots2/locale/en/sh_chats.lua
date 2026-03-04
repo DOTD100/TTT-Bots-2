@@ -647,6 +647,38 @@ local LoadLang = function()
     RegisterCategory("DefusingSuccessful", P.IMPORTANT) -- When an innocent bot is defusing a C4.
     Line("I defused it!", A.Default)
 
+    RegisterCategory("PickedUpTraitorWeapon", P.IMPORTANT) -- When a bot picks up a traitor weapon off the ground.
+    Line("I just picked up a traitor weapon, don't kill me!", A.Default)
+    Line("Found a traitor weapon on the ground, picking it up.", A.Default)
+    Line("Hey I grabbed a T weapon off the floor, I'm not a traitor!", A.Default)
+    Line("Don't shoot! I found a traitor weapon on the ground.", A.Default)
+    Line("picked up a t weapon off the ground dont shoot me lol", A.Casual)
+    Line("guys i found a traitor weapon dont freak out", A.Casual)
+    Line("yo i just grabbed a t weapon from the floor", A.Casual)
+    Line("I picked up a suspicious weapon, I'm not the traitor though.", A.Bad)
+
+    RegisterCategory("AmnesiacTransformed", P.IMPORTANT) -- When an Amnesiac bot confirms a body and gets a new role.
+    Line("I just remembered who I am!", A.Default)
+    Line("I confirmed a body and it all came back to me.", A.Default)
+    Line("I remember now... I know what I have to do.", A.Default)
+    Line("wait i just remembered everything", A.Casual)
+    Line("oh wow i remember my role now", A.Casual)
+    Line("Something feels different... I remember.", A.Bad)
+
+    RegisterCategory("CopycatTransformed", P.IMPORTANT) -- When a Copycat bot uses The Files to change role.
+    Line("Time for a new identity.", A.Default)
+    Line("I've studied the files. I know what to do now.", A.Default)
+    Line("New role, new me.", A.Default)
+    Line("The files told me everything I needed.", A.Default)
+    Line("just read through the files... interesting", A.Casual)
+    Line("switching things up", A.Casual)
+    Line("lol time to be someone else", A.Casual)
+    Line("Now I have all the power I need.", A.Bad)
+    Line("Your secrets are mine now.", A.Bad)
+    Line("what do these files say?? oh cool", A.Dumb)
+    Line("Enough studying. Time to act.", A.Hothead)
+    Line("Finally. A role worth playing.", A.Tryhard)
+
 
     -----------------------------------------------------------
     -- TRAITOROUS ACTIONS

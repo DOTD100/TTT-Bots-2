@@ -30,7 +30,7 @@ end
 
 --- Called when the behavior's last state is running
 function Wander.OnRunning(bot)
-    if not bot.wander then return Wander.OnStart() end -- force reboot :P
+    if not bot.wander then return Wander.OnStart(bot) end -- force reboot :P
 
     local hasExpired = Wander.HasExpired(bot)
     if hasExpired then return STATUS.SUCCESS end
@@ -84,7 +84,7 @@ function Wander.HasExpired(bot)
     if not wander then return true end
     local ctime = CurTime()
     local DIST_CLOSE_THRESH = 100
-    local closeEnough = (ctime > wander.timeEndClose) and (bot:GetPos():Distance(wander.targetPos))
+    local closeEnough = (ctime > wander.timeEndClose) and (bot:GetPos():Distance(wander.targetPos) < DIST_CLOSE_THRESH)
     return closeEnough or (wander.timeEndFar < ctime)
 end
 
@@ -97,9 +97,9 @@ function Wander.GetRandomNavInRegion(bot)
     return lib.GetRandomNavInNearestRegion(bot:GetPos())
 end
 
---- Gets a random nav area from the entire navmesh
+--- Gets a random nav area from the entire navmesh (uses cached nav areas)
 function Wander.GetRandomNav()
-    return table.Random(navmesh.GetAllNavAreas())
+    return table.Random(TTTBots.Lib.GetCachedNavAreas())
 end
 
 ---Return if the role can see all C4s inherently, or if it must have someone spot it first

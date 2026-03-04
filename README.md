@@ -10,20 +10,20 @@ This is a player bot addon for the Trouble in Terrorist Town game mode in Garry'
 
 It is designed to be as modular as possible, allowing easy customization and expansion. It is designed for TTT2 while being fully playable in regular TTT.
 
-📝 Note: Please stick to the main branch. Most other branches are eitherunstable or significantly behind.
+📝 Note: Please stick to the main branch. Most other branches are either unstable or significantly behind.
 
 ## Maps
 
 You can find the maps custom-made for this add-on [here](https://www.github.com/thebigsleepjoe/TTT-Bots-2-Maps).
 
-**The bots will work on any map with a navmesh**, but if you want plug-and-play and/or you don't care, you can just use the above add-on.
+**The bots will work on any map with a navmesh**, but if you want plug-and-play and/or you don't care, you can just use the above add-on. Details on how to generate navmesh is in the wiki.
 
 ## How to use
 
 1. Download the latest version from the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=1256344426).
 2. Start a Peer-to-Peer or SRCDS with sufficient player slots on a map with a navmesh or one of the included maps.
-3. *As a super admin,* either type `!botadd X` in chat or write `ttt_bot_add X` in the console.
-4. You're done!
+3. *As a super admin,* either type `!botadd X` in chat or type `ttt_bot_add X`/`ttt_bot_quota X` in the console.
+4. Enjoy!
 
 ## Role Support
 
@@ -32,15 +32,35 @@ This add-on supports a wide range of TTT2 roles. Here are some that have explici
 * Jester
 * Jackal
 * Sidekick
-* Hitman (needs work)
+* Hitman
+* Executioner
 * Serial Killer
 * Survivalist
 * Bodyguard
 * Sheriff
 * Deputy
 * Drunk
+* Pyschopath
+* Bandit
+* Roider
+* Brainwasher/Slave
+* Shanker
+* Hidden
+* Fuse
+* Beggar
+* Necromancer/Zombie
+* Pirate Captain/Pirate
+* Mesmerist
+* Cursed
+* Swapper
+* Loot Goblin
+* Amnesiac
+* Copycat
+* Arsonist
+* Speedrunner
+* Shinigami
 
-The mod also auto-generates compatibility with custom roles, but it is imperfect. It does not comprehend most 'public killer' roles (e.g., 'Speedrunner').
+The mod also auto-generates compatibility with custom roles, but it is imperfect. It does not comprehend "special" roles that have their own team unless listed above. When that happens, please open up an issue or comment on the Steam Workshop page.
 
 ## Usage and Commands
 

@@ -39,6 +39,9 @@ BotMorality.SUSPICIONVALUES = {
     ThrowIncin = 8,          -- This player has thrown an incendiary grenade
     ThrowSmoke = 3,          -- This player has thrown a smoke grenade
     PersonalSpace = 2,       -- This player is standing too close to me for too long
+    C4Killed = 8,            -- We survived a C4 explosion and traced it to this player
+    HearGunfight = 3,        -- We heard gunfire associated with this player (sound-based suspicion)
+    HoldingC4 = 10,          -- This player is holding a C4 bomb (instant KOS)
 }
 
 BotMorality.SuspicionDescriptions = {
@@ -310,6 +313,7 @@ end
 hook.Add("PlayerDeath", "TTTBots.Components.Morality.PlayerDeath", function(victim, weapon, attacker)
     if not (IsValid(victim) and victim:IsPlayer()) then return end
     if not (IsValid(attacker) and attacker:IsPlayer()) then return end
+    if not TTTBots.Match.IsRoundActive() then return end
     local timestamp = CurTime()
     if attacker:IsBot() then
         attacker.lastKillTime = timestamp
@@ -317,18 +321,97 @@ hook.Add("PlayerDeath", "TTTBots.Components.Morality.PlayerDeath", function(vict
     if victim:IsBot() then
         victim.components.morality:OnKilled(attacker)
     end
-    if not victim:Visible(attacker) then return end -- This must be an indirect attack, like C4 or fire.
-    if victim:GetTeam() == TEAM_INNOCENT then       -- This is technically a cheat, but it's a necessary one.
-        local ttt_bot_cheat_redhanded_time = lib.GetConVarInt("cheat_redhanded_time")
-        attacker.redHandedTime = timestamp +
-            ttt_bot_cheat_redhanded_time -- Only assign red handed time if it was a direct attack
-    end
-    local witnesses = lib.GetAllWitnesses(attacker:EyePos(), true)
-    table.insert(witnesses, victim)
 
-    for i, witness in pairs(witnesses) do
-        if witness and witness.components then
-            witness.components.morality:OnWitnessKill(victim, weapon, attacker)
+    -- Check if this is an indirect attack (C4, fire, etc.)
+    local isIndirectKill = not victim:Visible(attacker)
+    local isC4Kill = weapon and IsValid(weapon) and weapon.GetClass and weapon:GetClass() == "ttt_c4"
+
+    -- C4/indirect kills: only bots who already suspected the planter escalate.
+    if isC4Kill or isIndirectKill then
+        -- Try to identify the planter
+        local planter = nil
+        if isC4Kill and IsValid(weapon) then
+            planter = weapon.oTTTBotsPlanter
+        end
+        if not IsValid(planter) then
+            for c4, _ in pairs(TTTBots.Match.AllArmedC4s or {}) do
+                if IsValid(c4) and IsValid(c4.oTTTBotsPlanter) then
+                    if c4:GetPos():Distance(victim:GetPos()) < 1000 then
+                        planter = c4.oTTTBotsPlanter
+                        break
+                    end
+                end
+            end
+        end
+
+        -- Only escalate for bots who already had the planter flagged
+        if IsValid(planter) and planter:IsPlayer() and lib.IsPlayerAlive(planter) then
+            for _, bot in ipairs(TTTBots.Bots) do
+                if not (IsValid(bot) and lib.IsPlayerAlive(bot)) then continue end
+                if bot == planter then continue end
+                if TTTBots.Roles.IsAllies(bot, planter) then continue end
+                if not bot.components or not bot.components.morality then continue end
+
+                local morality = bot.components.morality
+                local existingSus = morality:GetSuspicion(planter) or 0
+
+                -- Only escalate if the bot already had the planter at "Suspicious" level or above
+                if existingSus >= BotMorality.Thresholds.Sus then
+                    morality:ChangeSuspicion(planter, "C4Killed")
+                end
+            end
+        end
+
+        -- Skip direct-kill witness system; proximity reaction still runs below.
+    end
+
+    if not isIndirectKill and not isC4Kill then
+        if victim:GetTeam() == TEAM_INNOCENT then       -- This is technically a cheat, but it's a necessary one.
+            local ttt_bot_cheat_redhanded_time = lib.GetConVarInt("cheat_redhanded_time")
+            attacker.redHandedTime = timestamp +
+                ttt_bot_cheat_redhanded_time -- Only assign red handed time if it was a direct attack
+        end
+
+        -- Original witness system: bots who can see the attacker (90 degree arc)
+        local witnesses = lib.GetAllWitnesses(attacker:EyePos(), true)
+        table.insert(witnesses, victim)
+
+        for i, witness in pairs(witnesses) do
+            if witness and witness.components then
+                witness.components.morality:OnWitnessKill(victim, weapon, attacker)
+            end
+        end
+    end
+
+    -- Nearby bots react to seeing someone die close to them
+    local DEATH_REACT_RANGE = 600
+    local victimPos = victim:GetPos()
+    local vicIsTraitor = victim:GetTeam() == TEAM_TRAITOR
+
+    for _, bot in ipairs(TTTBots.Bots) do
+        if not (IsValid(bot) and lib.IsPlayerAlive(bot)) then continue end
+        if bot == attacker or bot == victim then continue end
+        if bot.attackTarget ~= nil then continue end
+
+        local dist = bot:GetPos():Distance(victimPos)
+        if dist > DEATH_REACT_RANGE then continue end
+
+        if not bot:VisibleVec(victimPos + Vector(0, 0, 16)) then continue end
+
+        if not vicIsTraitor then
+            if not TTTBots.Roles.IsAllies(bot, attacker) then
+                bot:SetAttackTarget(attacker)
+
+                local memory = bot.components.memory
+                if memory then
+                    memory:UpdateKnownPositionFor(attacker, attacker:GetPos())
+                end
+
+                local chatter = bot:BotChatter()
+                if chatter then
+                    chatter:On("CallKOS", { player = attacker:Nick(), playerEnt = attacker })
+                end
+            end
         end
     end
 end)
@@ -352,7 +435,7 @@ function BotMorality:OnWitnessHurt(victim, attacker, healthRemaining, damageTake
             personality:OnPressureEvent("Hurt")
         end
     end
-    if self.bot == victim or self.bot == attacker and TTTBots.Roles.IsAllies(victim, attacker) then return end -- Don't build sus on ourselves or our allies
+    if self.bot == victim or (self.bot == attacker and TTTBots.Roles.IsAllies(victim, attacker)) then return end -- Don't build sus on ourselves or our allies
     -- If the target is disguised, we don't know who they are, so we can't build sus on them. Instead, ATTACK!
     if TTTBots.Match.IsPlayerDisguised(attacker) then
         if self.bot.attackTarget == nil then
@@ -394,9 +477,9 @@ function BotMorality:OnWitnessHurt(victim, attacker, healthRemaining, damageTake
 end
 
 function BotMorality:OnWitnessFireBullets(attacker, data, angleDiff)
-    local angleDiffPercent = angleDiff / 30
-    local sus = -1 * (1 - angleDiffPercent) / 4 -- Sus decreases as angle difference grows
-    if sus < 1 then sus = 0.1 end
+    local angleDiffPercent = math.Clamp(angleDiff / 30, 0, 1)
+    local sus = (1 - angleDiffPercent) / 4 -- Sus increases as angle difference shrinks (shots closer to us)
+    if sus < 0.1 then sus = 0.1 end
 
     -- print(attacker, data, angleDiff, angleDiffPercent, sus)
     if sus > 3 then
@@ -408,37 +491,160 @@ function BotMorality:OnWitnessFireBullets(attacker, data, angleDiff)
     self:ChangeSuspicion(attacker, "ShotAt", sus)
 end
 
+--- Called when a bullet passes close to us. Fights back if the shot was likely aimed at us.
+---@param attacker Player The player who fired
+---@param aimAngleToMe number Degrees between the shot direction and us (0 = dead on)
+function BotMorality:OnNearMiss(attacker, aimAngleToMe)
+    if not lib.IsPlayerAlive(self.bot) then return end
+    if attacker == self.bot then return end
+    if TTTBots.Roles.IsAllies(self.bot, attacker) then return end
+
+    -- If we're already fighting THIS attacker, just refresh and skip
+    if self.bot.attackTarget == attacker then
+        self.bot.tttbots_nearMissTime = CurTime()
+        return
+    end
+
+    -- Under 5 degrees = almost certainly aimed at us
+    local directlyAtMe = aimAngleToMe < 5
+
+    -- Check for nearby bystanders the shooter might be targeting instead
+    local nearbyPlayers = 0
+    if not directlyAtMe then
+        local allPlys = player.GetAll()
+        local nearRangeSqr = 300 * 300
+        local botPos = self.bot:GetPos()
+        for i = 1, #allPlys do
+            local ply = allPlys[i]
+            if ply == self.bot or ply == attacker then continue end
+            if not lib.IsPlayerAlive(ply) then continue end
+            if botPos:DistToSqr(ply:GetPos()) < nearRangeSqr then
+                nearbyPlayers = nearbyPlayers + 1
+            end
+        end
+    end
+
+    if directlyAtMe or nearbyPlayers <= 1 then
+        self.bot.tttbots_nearMissTime = CurTime()
+
+        self.bot:SetAttackTarget(attacker)
+        self:ChangeSuspicion(attacker, "ShotAtMe")
+        local personality = self.bot:BotPersonality()
+        if personality then
+            personality:OnPressureEvent("BulletClose")
+        end
+        local chatter = self.bot:BotChatter()
+        if chatter then
+            chatter:On("CallKOS", { player = attacker:Nick(), playerEnt = attacker })
+        end
+    else
+        -- Someone else is nearby; just bump suspicion heavily
+        self:ChangeSuspicion(attacker, "ShotAt", 1.5)
+    end
+end
+
+local FIRE_BULLETS_RANGE_SQR = 1500 * 1500
+local VEC_UP_8 = Vector(0, 0, 8)
+
 hook.Add("EntityFireBullets", "TTTBots.Components.Morality.FireBullets", function(entity, data)
     if not (IsValid(entity) and entity:IsPlayer()) then return end
-    local witnesses = lib.GetAllWitnesses(entity:EyePos(), true)
+    if not TTTBots.Match.IsRoundActive() then return end
 
-    local lookAngle = entity:EyeAngles()
+    local shooterPos = data.Src or entity:EyePos()
+    local shootDir = data.Dir or entity:GetAimVector()
+    local curTime = CurTime()
 
-    -- Combined loop for all witnesses
-    for i, witness in pairs(witnesses) do
-        if not witness:IsBot() then continue end
-        ---@cast witness Bot
-        local morality = witness:BotMorality()
+    for i, bot in ipairs(TTTBots.Bots) do
+        if not (IsValid(bot) and lib.IsPlayerAlive(bot)) then continue end
+        if bot == entity then continue end
 
-        -- We calculate the angle difference between the entity and the witness
-        local witnessAngle = witness:EyeAngles()
-        local angleDiff = lookAngle.y - witnessAngle.y
+        -- Debounce: skip if this bot already processed a bullet from this shooter recently
+        bot._lastFireBulletCheck = bot._lastFireBulletCheck or {}
+        local lastCheck = bot._lastFireBulletCheck[entity] or 0
+        if curTime - lastCheck < 0.1 then continue end
 
-        -- Adjust angle difference to be between -180 and 180
-        angleDiff = ((angleDiff + 180) % 360) - 180
-        -- Absolute value to ensure angleDiff is non-negative
-        angleDiff = math.abs(angleDiff)
+        local botPos = bot:GetPos()
+        if shooterPos:DistToSqr(botPos) > FIRE_BULLETS_RANGE_SQR then continue end
 
-        morality:OnWitnessFireBullets(entity, data, angleDiff)
-        hook.Run("TTTBotsOnWitnessFireBullets", witness, entity, data, angleDiff)
+        bot._lastFireBulletCheck[entity] = curTime
+
+        -- Check aim angle against head, center mass, and feet
+        local botCenter = bot:WorldSpaceCenter()
+        local botEye = bot:EyePos()
+        local botFeet = botPos + VEC_UP_8
+
+        local bestAngle = 180
+        for _, targetPos in ipairs({ botCenter, botEye, botFeet }) do
+            local toPoint = (targetPos - shooterPos):GetNormalized()
+            local dot = shootDir:Dot(toPoint)
+            local angle = math.deg(math.acos(math.Clamp(dot, -1, 1)))
+            if angle < bestAngle then
+                bestAngle = angle
+            end
+        end
+
+        if bestAngle < 15 then
+            local morality = bot:BotMorality()
+            if morality then
+                morality:OnNearMiss(entity, bestAngle)
+            end
+        end
+
+        if lib.CanSeeArc(bot, shooterPos, 90) then
+            local morality = bot:BotMorality()
+            if morality then
+                morality:OnWitnessFireBullets(entity, data, bestAngle)
+                hook.Run("TTTBotsOnWitnessFireBullets", bot, entity, data, bestAngle)
+            end
+        end
     end
 end)
 
 hook.Add("PlayerHurt", "TTTBots.Components.Morality.PlayerHurt", function(victim, attacker, healthRemaining, damageTaken)
     if not (IsValid(victim) and victim:IsPlayer()) then return end
     if not (IsValid(attacker) and attacker:IsPlayer()) then return end
-    if not victim:Visible(attacker) then return end -- This must be an indirect attack, like C4 or fire.
-    -- print(victim, attacker, healthRemaining, damageTaken)
+
+    if not victim:Visible(attacker) then
+        -- Indirect attack — only blame C4 planter if already suspected
+        if victim:IsBot() and victim.components and victim.components.morality then
+            local victimPos = victim:GetPos()
+            for c4, _ in pairs(TTTBots.Match.AllArmedC4s or {}) do
+                if not IsValid(c4) then continue end
+                local planter = c4.oTTTBotsPlanter
+                if not (IsValid(planter) and planter:IsPlayer() and lib.IsPlayerAlive(planter)) then continue end
+                if TTTBots.Roles.IsAllies(victim, planter) then continue end
+
+                if c4:GetPos():Distance(victimPos) < 1000 then
+                    local morality = victim.components.morality
+                    local existingSus = morality:GetSuspicion(planter) or 0
+                    -- Only escalate if we already had them flagged as suspicious
+                    if existingSus >= BotMorality.Thresholds.Sus then
+                        morality:ChangeSuspicion(planter, "C4Killed")
+                    end
+                    break
+                end
+            end
+
+            -- Can't see attacker but got hurt — turn and fight if close enough
+            if attacker ~= victim and not TTTBots.Roles.IsAllies(victim, attacker) then
+                local dist = victimPos:Distance(attacker:GetPos())
+                if dist < 1500 then
+                    victim:SetAttackTarget(attacker)
+                    local personality = victim:BotPersonality()
+                    if personality then
+                        personality:OnPressureEvent("Hurt")
+                    end
+                    -- Look toward the attacker so we can start engaging
+                    local loco = victim:BotLocomotor()
+                    if loco then
+                        loco:LookAt(attacker:GetPos() + Vector(0, 0, 48))
+                    end
+                end
+            end
+        end
+        return
+    end
+
     local witnesses = lib.GetAllWitnesses(attacker:EyePos(), true)
     table.insert(witnesses, victim)
 
@@ -448,13 +654,39 @@ hook.Add("PlayerHurt", "TTTBots.Components.Morality.PlayerHurt", function(victim
             hook.Run("TTTBotsOnWitnessHurt", witness, victim, attacker, healthRemaining, damageTaken)
         end
     end
+
+    -- Hearing-based reaction: nearby bots who can't see the attacker
+    local HEAR_RANGE_SQR = 1250 * 1250
+    local attackerPos = attacker:GetPos()
+    local VEC_UP_72 = Vector(0, 0, 72)
+    for _, bot in ipairs(TTTBots.Bots) do
+        if not (IsValid(bot) and lib.IsPlayerAlive(bot)) then continue end
+        if bot == attacker or bot == victim then continue end
+        if not bot.components or not bot.components.morality then continue end
+
+        if bot:GetPos():DistToSqr(attackerPos) > HEAR_RANGE_SQR then continue end
+
+        if lib.CanSeeArc(bot, attacker:EyePos(), 90) then continue end
+
+        -- Look toward the fight unless already reacting to a near-miss
+        local loco = bot:BotLocomotor()
+        local recentNearMiss = (bot.tttbots_nearMissTime or 0) + 3 > CurTime()
+        if loco and bot.attackTarget == nil and not recentNearMiss then
+            loco:LookAt(attackerPos + VEC_UP_72)
+        end
+
+        if bot.components.memory then
+            bot.components.memory:UpdateKnownPositionFor(attacker, attackerPos)
+        end
+    end
 end)
 
 hook.Add("TTTBodyFound", "TTTBots.Components.Morality.BodyFound", function(ply, deadply, rag)
     if not (IsValid(ply) and ply:IsPlayer()) then return end
     if not (IsValid(deadply) and deadply:IsPlayer()) then return end
-    local corpseIsTraitor = deadply:GetTeam() ~= TEAM_INNOCENT
-    local corpseIsPolice = deadply:GetRoleStringRaw() == "detective"
+    local corpseIsTraitor = deadply:GetTeam() == TEAM_TRAITOR
+    local corpseRoleData = TTTBots.Roles.GetRoleFor(deadply)
+    local corpseIsPolice = corpseRoleData and corpseRoleData:GetAppearsPolice() or false
 
     for i, bot in pairs(lib.GetAliveBots()) do
         local morality = bot.components and bot.components.morality
@@ -486,40 +718,37 @@ end
 --- Table of [Player]=number showing seconds near unidentified corpses
 --- Does not stack. If a player is near 2 corpses, it will only count as 1. This is to prevent innocents discovering massacres and being killed for it.
 local playersNearBodies = {}
-timer.Create("TTTBots.Components.Morality.PlayerCorpseTimer", 1, 0, function()
-    if TTTBots.Match.RoundActive == false then return end
+
+--- Consolidated per-player awareness timer: corpse tracking + disguised player detection.
+--- Runs once per second, single iteration over alive players.
+timer.Create("TTTBots.Components.Morality.PlayerAwareness", 1, 0, function()
+    if not TTTBots.Match.RoundActive then return end
     local alivePlayers = TTTBots.Match.AlivePlayers
     local corpses = TTTBots.Match.Corpses
 
-    for i, ply in pairs(alivePlayers) do
+    for i, ply in ipairs(alivePlayers) do
         if not IsValid(ply) then continue end
+
+        -- Corpse proximity tracking
         local isNearCorpse = BotMorality.IsPlayerNearUnfoundCorpse(ply, corpses)
         if isNearCorpse then
             playersNearBodies[ply] = (playersNearBodies[ply] or 0) + 1
         else
             playersNearBodies[ply] = math.max((playersNearBodies[ply] or 0) - 1, 0)
         end
-    end
-end)
 
--- Disguised player detection
-timer.Create("TTTBots.Components.Morality.DisguisedPlayerDetection", 1, 0, function()
-    if not TTTBots.Match.RoundActive then return end
-    local alivePlayers = TTTBots.Match.AlivePlayers
-    for i, ply in pairs(alivePlayers) do
+        -- Disguised player detection
         local isDisguised = TTTBots.Match.IsPlayerDisguised(ply)
-
         if isDisguised then
             local witnessBots = lib.GetAllWitnesses(ply:EyePos(), true)
-            for i, bot in pairs(witnessBots) do
+            for _, bot in ipairs(witnessBots) do
                 ---@cast bot Bot
                 if not IsValid(bot) then continue end
                 if not TTTBots.Roles.GetRoleFor(bot):GetUsesSuspicion() then continue end
                 local chatter = bot:BotChatter()
                 if not chatter then continue end
-                -- set attack target if we do not have one already
                 bot:SetAttackTarget(bot.attackTarget or ply)
-                bot:BotChatter():On("DisguisedPlayer")
+                chatter:On("DisguisedPlayer")
             end
         end
     end
@@ -548,7 +777,7 @@ local function preventAttackAlly(bot)
     end
 end
 
-local PS_RADIUS = 100
+local PS_RADIUS_SQR = 100 * 100
 local PS_INTERVAL = 5 -- time before we start caring about personal space
 local function personalSpace(bot)
     bot.personalSpaceTbl = bot.personalSpaceTbl or {}
@@ -556,20 +785,14 @@ local function personalSpace(bot)
     if not TTTBots.Roles.GetRoleFor(bot):GetUsesSuspicion() then return end
     if IsValid(bot.attackTarget) then return end -- don't care about personal space if we're attacking someone
 
-    local withinPSpace = lib.FilterTable(TTTBots.Match.AlivePlayers, function(other)
-        if other == bot then return false end
-        if not IsValid(other) then return false end
-        if not lib.IsPlayerAlive(other) then return false end
-        if not bot:Visible(other) then return false end
-        if TTTBots.Roles.IsAllies(bot, other) then return false end -- don't care about allies
+    local botPos = bot:GetPos()
+    for _, other in ipairs(TTTBots.Match.AlivePlayers) do
+        if other == bot then continue end
+        if not IsValid(other) then continue end
+        if TTTBots.Roles.IsAllies(bot, other) then continue end
+        if botPos:DistToSqr(other:GetPos()) > PS_RADIUS_SQR then continue end
+        if not bot:Visible(other) then continue end
 
-        local dist = bot:GetPos():Distance(other:GetPos())
-        if dist > PS_RADIUS then return false end
-
-        return true
-    end)
-
-    for i, other in pairs(withinPSpace) do
         bot.personalSpaceTbl[other] = (bot.personalSpaceTbl[other] or 0) + 0.5
         ticked[other] = true
     end
@@ -579,13 +802,15 @@ local function personalSpace(bot)
             bot.personalSpaceTbl[other] = math.max(time - 0.5, 0)
         end
 
-        if bot.personalSpaceTbl[other] or 0 <= 0 then
+        if (bot.personalSpaceTbl[other] or 0) <= 0 then
             bot.personalSpaceTbl[other] = nil
         end
 
         if (bot.personalSpaceTbl[other] or 0) >= PS_INTERVAL then
-            bot:GetMorality():ChangeSuspicion(other, "PersonalSpace")
-            bot:BotChatter():On("PersonalSpace")
+            local morality = bot:BotMorality()
+            if morality then morality:ChangeSuspicion(other, "PersonalSpace") end
+            local chatter = bot:BotChatter()
+            if chatter then chatter:On("PersonalSpace", { player = other:Nick() }) end
             bot.personalSpaceTbl[other] = nil
         end
     end
@@ -605,12 +830,44 @@ local function noticeTraitorWeapons(bot)
         return iCanSee
     end)
 
-    if table.IsEmpty(filtered) then return end
+    if #filtered == 0 then return end
 
     local firstEnemy = TTTBots.Lib.GetClosest(filtered, bot:GetPos()) ---@cast firstEnemy Player?
     if not firstEnemy then return end
     bot:SetAttackTarget(firstEnemy)
-    bot:BotChatter():On("HoldingTraitorWeapon", { player = firstEnemy:Nick() })
+    local chatter = bot:BotChatter()
+    if chatter then chatter:On("HoldingTraitorWeapon", { player = firstEnemy:Nick() }) end
+end
+
+--- Detect anyone visibly holding C4. For innocent-side bots this is instant KOS --
+--- only traitors carry C4, so seeing someone hold it is a dead giveaway.
+local function noticeC4Holders(bot)
+    if bot.attackTarget ~= nil then return end
+    if not TTTBots.Roles.GetRoleFor(bot):GetUsesSuspicion() then return end
+
+    local nonAllies = TTTBots.Roles.GetNonAllies(bot)
+    for _, other in pairs(nonAllies) do
+        if not (IsValid(other) and other ~= NULL and lib.IsPlayerAlive(other)) then continue end
+        if TTTBots.Roles.GetRoleFor(other):GetAppearsPolice() then continue end
+
+        -- Check if this player is visibly holding C4
+        local activeWep = other:GetActiveWeapon()
+        if not (IsValid(activeWep) and activeWep:GetClass() == "weapon_ttt_c4") then continue end
+
+        if not TTTBots.Lib.CanSeeArc(bot, other:GetPos() + Vector(0, 0, 24), 90) then continue end
+
+        local morality = bot.components and bot.components.morality
+        if morality then
+            morality:ChangeSuspicion(other, "HoldingC4")
+        end
+        bot:SetAttackTarget(other)
+
+        local chatter = bot:BotChatter()
+        if chatter then
+            chatter:On("CallKOS", { player = other:Nick(), playerEnt = other })
+        end
+        return -- One target at a time
+    end
 end
 
 local function commonSense(bot)
@@ -618,21 +875,78 @@ local function commonSense(bot)
     preventAttackAlly(bot)
     personalSpace(bot)
     noticeTraitorWeapons(bot)
+    noticeC4Holders(bot)
 end
-
-timer.Create("TTTBots.Components.Morality.CommonSense", 1, 0, function()
-    if not TTTBots.Match.IsRoundActive() then return end
-    for i, bot in pairs(TTTBots.Bots) do
-        if not bot or bot == NULL or not IsValid(bot) then continue end
-        if not bot.components.chatter or not bot:BotLocomotor() then continue end
-        if not lib.IsPlayerAlive(bot) then continue end
-        commonSense(bot)
-    end
-end)
 
 ---@class Player
 local plyMeta = FindMetaTable("Player")
 function plyMeta:BotMorality()
     ---@cast self Bot
+    if not self.components then return nil end
     return self.components.morality
 end
+
+--- Hearing-based suspicion logic for a single bot. Called every 2 seconds.
+---@param bot Bot
+local function hearingReaction(bot)
+    if not bot.components or not bot.components.memory or not bot.components.morality then return end
+    if not TTTBots.Roles.GetRoleFor(bot):GetUsesSuspicion() then return end
+
+    local memory = bot.components.memory
+    local morality = bot.components.morality
+    local curTime = CurTime()
+
+    local recentSounds = memory:GetRecentSounds()
+    local heardShooters = {}
+    for _, s in ipairs(recentSounds) do
+        if s.sound ~= "Gunshot" then continue end
+        if (curTime - s.time) > 8 then continue end
+        if not (s.ply and IsValid(s.ply) and s.ply ~= bot) then continue end
+        if lib.CanSeeArc(bot, s.pos, 90) then continue end
+        heardShooters[s.ply] = (heardShooters[s.ply] or 0) + 1
+    end
+
+    for shooter, count in pairs(heardShooters) do
+        if count >= 2 and not TTTBots.Roles.IsAllies(bot, shooter) then
+            morality:ChangeSuspicion(shooter, "HearGunfight")
+        end
+    end
+
+    local cluster = memory:GetMostUrgentGunfight()
+    if cluster and cluster.count >= 3 and (curTime - cluster.newest) < 6 then
+        local dist = bot:GetPos():Distance(cluster.pos)
+        local recentNearMiss = (bot.tttbots_nearMissTime or 0) + 3 > curTime
+        if dist < 2000 and bot.attackTarget == nil and not recentNearMiss then
+            local loco = bot:BotLocomotor()
+            if loco then
+                loco:LookAt(cluster.pos + Vector(0, 0, 72))
+            end
+        end
+    end
+end
+
+--- Consolidated per-bot awareness timer: common sense + hearing reaction.
+--- Runs once per second with a single bot iteration. Hearing reaction runs
+--- every other cycle (effectively every 2 seconds) via a tick counter.
+local botAwarenessTick = 0
+timer.Create("TTTBots.Components.Morality.BotAwareness", 1, 0, function()
+    if not TTTBots.Match.IsRoundActive() then return end
+    botAwarenessTick = botAwarenessTick + 1
+    local doHearing = (botAwarenessTick % 2 == 0)
+
+    for i, bot in ipairs(TTTBots.Bots) do
+        if not bot or bot == NULL or not IsValid(bot) then continue end
+        if not bot.initialized or not bot.components then continue end
+        if not lib.IsPlayerAlive(bot) then continue end
+
+        -- Common sense (every 1s)
+        if bot.components.chatter and bot:BotLocomotor() then
+            commonSense(bot)
+        end
+
+        -- Hearing reaction (every 2s)
+        if doHearing then
+            hearingReaction(bot)
+        end
+    end
+end)

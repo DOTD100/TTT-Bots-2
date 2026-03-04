@@ -70,41 +70,11 @@ function Attack.Seek(bot, targetPos)
 end
 
 function Attack.GetTargetHeadPos(targetPly)
-    local fallback = targetPly:EyePos()
-
-    local head_bone_index = targetPly:LookupBone("ValveBiped.Bip01_Head1")
-    if not head_bone_index then
-        print("Returning fallback; no bone index for target.")
-        return fallback
-    end
-
-    local head_pos, head_ang = targetPly:GetBonePosition(head_bone_index)
-
-    if head_pos then
-        return head_pos
-    else
-        print("Returning fallback, couldn't retrieve head_pos from bone index " .. head_bone_index)
-        return fallback
-    end
+    return lib.GetHeadPos(targetPly)
 end
 
 function Attack.GetTargetBodyPos(targetPly)
-    local fallback = targetPly:GetPos() + Vector(0, 0, 30)
-
-    local spine_bone_index = targetPly:LookupBone("ValveBiped.Bip01_Spine2")
-    if not spine_bone_index then
-        print("Returning fallback; no bone index for target.")
-        return fallback
-    end
-
-    local spine_pos, spine_ang = targetPly:GetBonePosition(spine_bone_index)
-
-    if spine_pos then
-        return spine_pos
-    else
-        print("Returning fallback, couldn't retrieve spine_pos from bone index " .. spine_bone_index)
-        return fallback
-    end
+    return lib.GetBodyPos(targetPly)
 end
 
 function Attack.ShouldLookAtBody(bot, weapon)
@@ -209,8 +179,56 @@ function Attack.Engage(bot, targetPos)
     local loco = bot:BotLocomotor() ---@type CLocomotor
     loco.stopLookingAround = true
 
-    local tooFarToAttack = false --- Used to prevent attacking when we are using a melee weapon and are too far away
     local distToTarget = bot:GetPos():Distance(target:GetPos())
+
+    -- 🗡️ ASSASSIN KNIFE LOGIC: Bots with useKnives trait prefer backstabs
+    local isAssassin = bot:GetTraitBool("useKnives")
+    if isAssassin and target:IsPlayer() and distToTarget < 500 then
+        -- Check if we have a knife weapon
+        local knifeWep = nil
+        local knifeCandidates = { "weapon_ttt_knife", "weapon_ttt2_knife", "weapon_ttt_xknife" }
+        for _, cls in ipairs(knifeCandidates) do
+            if bot:HasWeapon(cls) then
+                knifeWep = bot:GetWeapon(cls)
+                break
+            end
+        end
+
+        if knifeWep and IsValid(knifeWep) then
+            -- Check if we're behind the target
+            local toBot = (bot:GetPos() - target:GetPos()):GetNormalized()
+            local targetFwd = target:GetForward()
+            toBot.z = 0
+            targetFwd.z = 0
+            toBot:Normalize()
+            targetFwd:Normalize()
+            local isBehind = targetFwd:Dot(toBot) < 0
+
+            if isBehind or distToTarget < 120 then
+                -- Switch to knife for the backstab
+                local activeWep = bot:GetActiveWeapon()
+                if not (IsValid(activeWep) and activeWep == knifeWep) then
+                    pcall(bot.SelectWeapon, bot, knifeWep:GetClass())
+                    inv:PauseAutoSwitch()
+                end
+                -- Refresh weapon info after switch
+                weapon = inv:GetHeldWeaponInfo()
+                if weapon then
+                    usingMelee = not weapon.is_gun
+                end
+            else
+                -- Not behind yet — use gun but try to flank
+                -- (Approach from behind by targeting a position behind the enemy)
+                local behindDir = -target:GetForward()
+                behindDir.z = 0
+                behindDir:Normalize()
+                local flankPos = target:GetPos() + behindDir * 100
+                loco:SetGoal(flankPos)
+            end
+        end
+    end
+
+    local tooFarToAttack = false --- Used to prevent attacking when we are using a melee weapon and are too far away
     if bot.wasPathing and not usingMelee then
         loco:StopMoving()
         bot.wasPathing = false
@@ -297,14 +315,14 @@ function Attack.CalculateInaccuracy(bot, origin, target)
     local pressure = personality:GetPressure()   -- float [0,1]
     local rage = (personality:GetRage() * 2) + 1 -- float [1,3]
 
+    local roleData = TTTBots.Roles.GetRoleFor(bot)
     local isTraitorFactor =
-        (bot:GetRoleStringRaw() == "traitor" and lib.GetConVarBool("cheat_traitor_accuracy"))
+        (roleData and roleData:GetStartsFights() and lib.GetConVarBool("cheat_traitor_accuracy"))
         and 0.5 or 1
 
     local focus_factor = (1 - (bot.attackFocus or 0.01)) * 1.5
 
     local targetMoveFactor = 1
-    local selfMoveFactor = bot:GetVelocity():LengthSqr() > 100 and 1.25 or 0.75
     if not (IsValid(target) and target:IsPlayer()) then
         targetMoveFactor = 0.5
     else
@@ -375,6 +393,11 @@ function Attack.LookingCloseToTarget(bot, target)
     return isLookingClose
 end
 
+local ATTACK_DISPATCH = {
+    [ATTACKMODE.Seeking] = Attack.Seek,
+    [ATTACKMODE.Engaging] = Attack.Engage,
+}
+
 --- Determine what mode of attack (attackMode) we are in.
 ---@param bot Bot
 ---@return ATTACKMODE mode
@@ -388,11 +411,7 @@ function Attack.RunningAttackLogic(bot)
 
     if canShoot then mode = ATTACKMODE.Engaging end -- We can shoot them, we are engaging
 
-    local switchcase = {
-        [ATTACKMODE.Seeking] = Attack.Seek,
-        [ATTACKMODE.Engaging] = Attack.Engage,
-    }
-    switchcase[mode](bot, targetPos) -- Call the function
+    ATTACK_DISPATCH[mode](bot, targetPos) -- Call the function
     return mode
 end
 
@@ -481,6 +500,9 @@ function Attack.OnEnd(bot)
     bot:SetAttackTarget(nil)
     bot:BotLocomotor().stopLookingAround = false
     bot:BotLocomotor():StopAttack()
+    -- Resume auto-switch in case an assassin trait bot paused it for knife usage
+    local inv = bot.components and bot.components.inventory
+    if inv then inv:ResumeAutoSwitch() end
 end
 
 local FOCUS_DECAY = 0.02

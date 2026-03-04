@@ -1,9 +1,30 @@
 ---@class CInventory : Component
-TTTBots.Components.Inventory = {}
+TTTBots.Components.Inventory = TTTBots.Components.Inventory or {}
 
 local lib = TTTBots.Lib
 ---@class CInventory : Component
 local BotInventory = TTTBots.Components.Inventory
+
+--- Safe wrapper for SelectWeapon. Blacklists weapon classes that error on Deploy/Holster.
+---@param bot Player
+---@param className string
+---@return boolean success
+local function SafeSelectWeapon(bot, className)
+    if not bot.tttbots_wepBlacklist then
+        bot.tttbots_wepBlacklist = {}
+    end
+    if bot.tttbots_wepBlacklist[className] then
+        return false
+    end
+
+    local ok, err = pcall(bot.SelectWeapon, bot, className)
+    if not ok then
+        bot.tttbots_wepBlacklist[className] = true
+        print(string.format("[TTT Bots 2] SelectWeapon('%s') failed for %s — blacklisted: %s",
+            className, bot:Nick(), tostring(err)))
+    end
+    return ok
+end
 
 function BotInventory:New(bot)
     local newInventory = {}
@@ -210,9 +231,10 @@ function BotInventory:GetWeaponInfo(wep)
     ]]
     info.ammo_ent = wep.AmmoEnt
     -- If the weapon is a traitor weapon
-    info.is_traitor_weapon = table.HasValue(wep.CanBuy or {}, ROLE_TRAITOR)
+    local canBuy = wep.CanBuy or {}
+    info.is_traitor_weapon = canBuy[ROLE_TRAITOR] and true or false
     -- If the weapon is a detective weapon
-    info.is_detective_weapon = table.HasValue(wep.CanBuy or {}, ROLE_DETECTIVE)
+    info.is_detective_weapon = canBuy[ROLE_DETECTIVE] and true or false
     -- If the weapon is silent
     info.silent = wep.IsSilent
     -- If we can drop it
@@ -241,16 +263,6 @@ function BotInventory:GetWeaponInfo(wep)
     return info
 end
 
-function BotInventory:GetAllWeaponInfo()
-    local weapons = self.bot:GetWeapons()
-    local weapon_info = {}
-    for _, wep in pairs(weapons) do
-        local info = self:GetWeaponInfo(wep)
-        table.insert(weapon_info, info)
-    end
-    return weapon_info
-end
-
 --- get the first special (buyable) primary we have (aka, a buyable we should use as a primary)
 ---@return Weapon|nil wep The weapon object (not a wepinfo)
 function BotInventory:GetSpecialPrimary()
@@ -264,16 +276,6 @@ function BotInventory:GetSpecialPrimary()
     end
 end
 
----Return true if the bot has a valid WeaponInfo wep and it has > 0 bullets in the clip. Tests for nil.
----@param wepInfo WeaponInfo?
----@return boolean
-function BotInventory:WepInfoHasClip(wepInfo)
-    return (wepInfo and wepInfo.has_bullets and wepInfo.clip > 0) or false
-end
-
-function BotInventory:WepHasClip(wep)
-    return (wep and IsValid(wep) and wep:Clip1() > 0) or false
-end
 
 ---Get if the bots has no other weapons besides melee (false) or not (true)
 ---@param attackMode boolean Set to true if you want to check the weapons have ammo in reserve, not just in the clip
@@ -310,7 +312,7 @@ function BotInventory:ManageDebugWeapon()
         if not self.bot:HasWeapon(forcedClass) then
             self.bot:Give(forcedClass)
         end
-        self.bot:SelectWeapon(forcedClass)
+        SafeSelectWeapon(self.bot, forcedClass)
 
         local held = self:GetHeldWeaponInfo()
         if not held then return true end
@@ -339,21 +341,23 @@ function BotInventory:AutoManageInventory()
     local w_primary, primary = self:GetPrimary()
     local w_secondary, secondary = self:GetSecondary()
 
-    -- local isAttacking = self.bot.attackTarget ~= nil
-
-    local hash = {
-        [self.EquipSpecial] = special,
-        [self.EquipPrimary] = primary,
-        [self.EquipSecondary] = secondary,
-        -- [self.EquipMelee] = self:HasNoWeaponAvailable(false),
+    -- Use an ordered list so we always prefer special > primary > secondary
+    local priorityList = {
+        { func = self.EquipSpecial,   info = special },
+        { func = self.EquipPrimary,   info = primary },
+        { func = self.EquipSecondary, info = secondary },
     }
 
     local foundGun = false
-    for func, wepInfo in pairs(hash) do
-        if wepInfo.ammo > 0 or wepInfo.clip > 0 then
-            func(self)
-            foundGun = true
-            break
+    for _, entry in ipairs(priorityList) do
+        local wepInfo = entry.info
+        if wepInfo and (wepInfo.ammo > 0 or wepInfo.clip > 0) then
+            local success = entry.func(self)
+            if success ~= false then
+                foundGun = true
+                break
+            end
+            -- If equip failed (e.g. weapon blacklisted), try the next one
         end
     end
 
@@ -389,28 +393,82 @@ function BotInventory:ReloadIfNecessary()
     return reload
 end
 
---- Gives the bot weapon_ttt_c4 if he doesn't have it already.
-function BotInventory:GiveC4()
-    local hasC4 = false
-    local weapons = self.bot:GetWeapons()
-    for _, wep in pairs(weapons) do
-        if wep:GetClass() == "weapon_ttt_c4" then
-            hasC4 = true
-            break
-        end
-    end
-
-    if not hasC4 then
-        self.bot:Give("weapon_ttt_c4")
-    end
-end
-
 function BotInventory:PauseAutoSwitch()
     self.pauseAutoSwitch = true
 end
 
 function BotInventory:ResumeAutoSwitch()
     self.pauseAutoSwitch = false
+end
+
+--- When idle, switch to partially-loaded weapons to reload them.
+---@return boolean reloading True if we switched to a weapon to reload it
+function BotInventory:ProactiveReload()
+    local bot = self.bot
+    if not lib.IsPlayerAlive(bot) then return false end
+
+    if IsValid(bot.attackTarget) then return false end
+    if self.pauseAutoSwitch then return false end
+
+    -- Throttle to avoid constant weapon flickering
+    if (self._proactiveReloadNext or 0) > CurTime() then return false end
+
+    -- If we're currently in the middle of a proactive reload, wait for it to finish
+    if self._proactiveReloading then
+        local heldWep = bot:GetActiveWeapon()
+        if IsValid(heldWep) and heldWep:Clip1() < heldWep:GetMaxClip1() then
+            -- Still reloading, keep going
+            local loco = bot:BotLocomotor()
+            if loco then loco:Reload() end
+            return true
+        end
+        -- Reload finished (or weapon changed) — clear the flag and resume
+        self._proactiveReloading = false
+        self._proactiveReloadNext = CurTime() + 1
+        return false
+    end
+
+    -- Scan all weapons for any that need topping off
+    local weapons = bot:GetWeapons()
+    for _, wep in pairs(weapons) do
+        if not IsValid(wep) then continue end
+        local maxClip = wep:GetMaxClip1()
+        if maxClip <= 0 then continue end -- Not a gun (melee, nade, etc.)
+        local clip = wep:Clip1()
+        if clip >= maxClip then continue end -- Already full
+
+        -- Check we have reserve ammo to reload with
+        local ammoType = wep:GetPrimaryAmmoType()
+        if ammoType < 0 then continue end
+        local reserve = bot:GetAmmoCount(ammoType)
+        if reserve <= 0 then continue end
+
+        -- This weapon needs reloading — is it already held?
+        local activeWep = bot:GetActiveWeapon()
+        if IsValid(activeWep) and activeWep == wep then
+            -- Already holding it, just reload
+            local loco = bot:BotLocomotor()
+            if loco then
+                loco:StopAttack()
+                loco:StopAttack2()
+                loco:Reload()
+            end
+            self._proactiveReloading = true
+            return true
+        end
+
+        -- Need to switch to this weapon first
+        local switched = SafeSelectWeapon(bot, wep:GetClass())
+        if switched ~= false then
+            self._proactiveReloading = true
+            -- Reload will happen next tick when we're holding it
+            return true
+        end
+    end
+
+    -- Nothing to reload — check again in a few seconds
+    self._proactiveReloadNext = CurTime() + 3
+    return false
 end
 
 function BotInventory:Think()
@@ -421,7 +479,13 @@ function BotInventory:Think()
     self.tick = self.tick + 1
 
     if not IsValid(self.bot.attackTarget) then
+        -- First try proactive reload (cycles through ALL guns)
+        if self:ProactiveReload() then return end
+        -- Fallback: reload currently held weapon
         self:ReloadIfNecessary()
+    else
+        -- In combat: cancel any proactive reload in progress
+        self._proactiveReloading = false
     end
 
     -- Manage our own inventory, but only if we have not been paused
@@ -469,6 +533,27 @@ function BotInventory:EquipSheriffGun()
     self.bot:SetActiveWeapon(gun)
     return true
 end
+
+--- Return the Brainwasher's Slave Deagle (weapon_ttt2_slavedeagle) if it has >0 shots. If not, then return nil.
+---@return WeaponInfo?
+function BotInventory:GetSlaveDeagle()
+    local hasWeapon = self.bot:HasWeapon("weapon_ttt2_slavedeagle")
+    if not hasWeapon then return end
+    local wep = self.bot:GetWeapon("weapon_ttt2_slavedeagle")
+    if not IsValid(wep) then return end
+
+    return wep:Clip1() > 0 and wep or nil
+end
+
+--- Equip the Brainwasher's Slave Deagle if we have it. Returns true if we equipped it, false if we didn't.
+---@return boolean
+function BotInventory:EquipSlaveDeagle()
+    local gun = self:GetSlaveDeagle()
+    if not gun then return false end
+    self.bot:SetActiveWeapon(gun)
+    return true
+end
+
 ---Returns the weapon info table for the weapon we are holding, or what the target is holding if any.
 ---@param target Player|nil
 ---@return WeaponInfo?
@@ -522,11 +607,11 @@ function BotInventory:GetBySlot(slot)
 end
 
 function BotInventory:HasPrimary()
-    return self:GetByKindRaw(BotInventory.kindHash.primary) == nil
+    return self:GetByKindRaw(BotInventory.kindHash.primary) ~= nil
 end
 
 function BotInventory:HasSecondary()
-    return self:GetByKindRaw(BotInventory.kindHash.secondary) == nil
+    return self:GetByKindRaw(BotInventory.kindHash.secondary) ~= nil
 end
 
 ---Returns the first Weapon in the bots weapons list of int "kind"
@@ -596,17 +681,16 @@ function BotInventory:Equip(wep)
 
     if found then
         -- self.bot:SelectWeapon(found) apparently this only works with classnames and not weapon objects...
-        self.bot:SelectWeapon(found:GetClass())
+        return SafeSelectWeapon(self.bot, found:GetClass())
     end
 
-    return (found ~= nil)
+    return false
 end
 
 function BotInventory:EquipSpecial()
     local firstSpecial = self:GetSpecialPrimary()
     if not (firstSpecial and IsValid(firstSpecial)) then return false end
-    self.bot:SelectWeapon(firstSpecial)
-    return true
+    return SafeSelectWeapon(self.bot, firstSpecial:GetClass())
 end
 
 function BotInventory:EquipPrimary()
@@ -619,12 +703,15 @@ end
 
 function BotInventory:EquipMelee()
     -- return self:Equip("melee")
-    return self.bot:SelectWeapon("weapon_zm_improvised")
+    return SafeSelectWeapon(self.bot, "weapon_zm_improvised")
 end
 
 function BotInventory:EquipGrenade()
-    return self:Equip("grenade")
+    local nade = self:GetGrenade()
+    if not nade then return false end
+    return SafeSelectWeapon(self.bot, nade:GetClass())
 end
+
 
 function BotInventory:GetInventoryString()
     local weapons = self.bot:GetWeapons()
@@ -666,5 +753,13 @@ local plyMeta = FindMetaTable("Player")
 ---@return CInventory
 function plyMeta:BotInventory()
     ---@cast self Bot
+    if not self.components then return nil end
     return self.components.inventory
 end
+
+--- Clear weapon blacklists each round so weapons get a fresh chance.
+hook.Add("TTTBeginRound", "TTTBots.Inventory.ClearBlacklist", function()
+    for _, bot in ipairs(player.GetBots()) do
+        bot.tttbots_wepBlacklist = nil
+    end
+end)

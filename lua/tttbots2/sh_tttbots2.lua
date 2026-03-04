@@ -12,12 +12,14 @@ end
 
 if not gamemodeCompatible() then return end
 
--- Declare TTTBots table
+-- Declare TTTBots table (preserve existing sub-tables like Components on re-run)
+local _existingComponents = TTTBots and TTTBots.Components
 TTTBots = {
     Version = "v1.3.5",
     Tickrate = 5, -- Ticks per second. Do not change unless you really know what you're doing.
     Lib = {},
-    Chat = {}
+    Chat = {},
+    Components = _existingComponents, -- Preserve component classes across re-includes
 }
 
 function TTTBots.Chat.MessagePlayer(ply, message)
@@ -37,6 +39,7 @@ local function includeServer()
     include("tttbots2/lib/sv_tree.lua")
     include("tttbots2/lib/sv_buyables.lua")
     include("tttbots2/lib/sv_roles.lua")
+    include("tttbots2/lib/sv_compat_hidden.lua")
 end
 
 --- Similar to includeSharedFile, will include the file if we're a client, otherwise will AddCSLuaFile it if we're a server.
@@ -109,19 +112,17 @@ function TTTBots.Reload()
             TTTBots.Behaviors.RunTreeOnBots()
             TTTBots.PlanCoordinator.Tick()
             local bots = TTTBots.Bots
-            for i, bot in pairs(bots) do
+            for i, bot in ipairs(bots) do
                 -- TTTBots.DebugServer.RenderDebugFor(bot, { "all" })
                 if not (IsValid(bot) and bot and bot.components) then continue end -- Sometimes a weird bug or edge case occurs, just ignore it
 
-                for i, component in pairs(bot.components) do
-                    if component.Think == nil then
-                        print("No think")
-                        continue
-                    end
+                for _, component in pairs(bot.components) do
+                    if component.Think == nil then continue end
                     component:Think()
                 end
 
-                bot.tick = bot:BotLocomotor().tick
+                local loco = bot:BotLocomotor()
+                bot.tick = loco and loco.tick or 0
                 bot.timeInGame = (bot.timeInGame or 0) + (1 / TTTBots.Tickrate)
             end
             TTTBots.Lib.UpdateBotModels()
@@ -137,6 +138,7 @@ function TTTBots.Reload()
     hook.Add("StartCommand", "TTTBots_StartCommand", function(ply, cmd)
         if ply:IsBot() then
             local bot = ply
+            if not (bot.initialized and bot.components) then return end
             local locomotor = bot:BotLocomotor()
 
             -- Update locomotor

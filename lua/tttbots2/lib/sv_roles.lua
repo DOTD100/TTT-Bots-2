@@ -101,8 +101,25 @@ function TTTBots.Roles.GenerateRegisterForRole(roleString)
         if baseData:GetName() ~= "default" then
             local copy = table.Copy(baseData)
             copy:SetName(roleString)
+
+            -- Override team if the role's actual TTT2 team differs from the base role
+            local actualTeam = roleObj.defaultTeam
+            if actualTeam and actualTeam ~= baseData:GetTeam() then
+                copy:SetTeam(actualTeam)
+                copy:SetAlliedTeams({ [actualTeam] = true })
+                copy:SetAlliedRoles({ [roleString] = true })
+                copy:SetCanCoordinate(actualTeam == TEAM_TRAITOR)
+                copy:SetStartsFights(actualTeam == TEAM_TRAITOR)
+                copy:SetBTree(TTTBots.Behaviors.DefaultTreesByTeam[actualTeam] or copy:GetBTree())
+                print(string.format("[TTT Bots 2] Auto-registered role '%s' based off of '%s' (team overridden: %s -> %s)", roleString, baseRole.name, tostring(baseData:GetTeam()), tostring(actualTeam)))
+            else
+                local currentAllies = copy:GetAlliedRoles()
+                currentAllies[roleString] = true
+                copy:SetAlliedRoles(currentAllies)
+                print(string.format("[TTT Bots 2] Auto-registered role '%s' based off of '%s'", roleString, baseRole.name))
+            end
+
             TTTBots.Roles.RegisterRole(copy)
-            print(string.format("[TTT Bots 2] Auto-registered role '%s' based off of '%s'", roleString, baseRole.name))
             return true
         end
     end

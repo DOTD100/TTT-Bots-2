@@ -7,7 +7,17 @@ timer.Create("TTTBots.Match.UpdateBotsTable", 1, 0, function()
     TTTBots.Bots = {}
     for i, v in pairs(player.GetAll()) do
         if v:IsBot() then
-            table.insert(TTTBots.Bots, v)
+            if v.initialized and v.components then
+                table.insert(TTTBots.Bots, v)
+            elseif v.zombie_check_time == nil then
+                -- First time seeing this uninitialized bot; give it a grace period
+                -- (CreateBot may still be running component constructors)
+                v.zombie_check_time = CurTime() + 10
+            elseif CurTime() > v.zombie_check_time then
+                -- Bot has been uninitialized for over 10 seconds — it's a zombie, kick it
+                print(string.format("[TTT Bots 2] Kicking zombie bot '%s' (no components after 10s grace period)", v:Nick()))
+                v:Kick("Zombie bot cleanup")
+            end
         end
     end
 end)
@@ -36,10 +46,16 @@ Match.SpottedC4s = {} ---@type table<Entity, boolean> Armed C4 that has been spo
 Match.AllArmedC4s = {} ---@type table<Entity, boolean>
 Match.Smokes = {}
 
+local _corpseCleanupCounter = 0
 function Match.Tick()
     if not Match.RoundActive then return end
-    Match.CleanupNullCorpses()
-    Match.SecondsPassed = (Match.Time()) + (1 / TTTBots.Tickrate)
+    -- Only clean up corpses once per second instead of every tick (5x/sec)
+    _corpseCleanupCounter = _corpseCleanupCounter + 1
+    if _corpseCleanupCounter >= TTTBots.Tickrate then
+        _corpseCleanupCounter = 0
+        Match.CleanupNullCorpses()
+    end
+    Match.SecondsPassed = Match.SecondsPassed + (1 / TTTBots.Tickrate)
 end
 
 --- Returns true if enough time, as defined by plans_mindelay and _maxdelay, has passed since the round began. Used for automatic plan execution by bots.
@@ -88,7 +104,7 @@ function Match.CallKOS(caller, target)
     Match.KOSList[target] = Match.KOSList[target] or {}
     Match.KOSList[target][caller] = caller
 
-    for i, bot in pairs(TTTBots.Bots) do
+    for i, bot in ipairs(TTTBots.Bots) do
         local morality = bot:BotMorality()
         if not morality then continue end
         morality:OnKOSCalled(caller, target)
@@ -111,8 +127,8 @@ end
 
 ---@realm shared
 function Match.CleanupNullCorpses()
-    for i, v in pairs(Match.Corpses) do
-        if not IsValid(v) or v == NULL then
+    for i = #Match.Corpses, 1, -1 do
+        if not IsValid(Match.Corpses[i]) then
             table.remove(Match.Corpses, i)
         end
     end
@@ -136,7 +152,7 @@ function Match.ResetStats(roundActive)
     Match.Smokes = {}
 
     if SERVER then
-        for i, v in pairs(TTTBots.Bots) do
+        for i, v in ipairs(TTTBots.Bots) do
             v:SetAttackTarget(nil)
         end
     end
@@ -158,7 +174,7 @@ end
 ---@realm server
 function Match.GetBotsDifficulty()
     local tbl = {}
-    for i, bot in pairs(TTTBots.Bots) do
+    for i, bot in ipairs(TTTBots.Bots) do
         local diff = Match.GetBotDifficulty(bot)
         tbl[bot] = diff
     end
@@ -211,11 +227,30 @@ function Match.OnBotSpotC4(bot, c4)
     if not chatter then return end
     chatter:On("SpottedC4", {}, false)
     locomotor:LookAt(c4:GetPos())
+
+    -- If we can identify who planted this C4, raise suspicion on them.
+    -- The planter reference is stored on the entity by the PlantBomb behavior.
+    local planter = c4.oTTTBotsPlanter
+    if not (IsValid(planter) and planter:IsPlayer() and TTTBots.Lib.IsPlayerAlive(planter)) then return end
+    if TTTBots.Roles.IsAllies(bot, planter) then return end
+    if not bot.components then return end
+
+    -- Check if the planter is close enough to the bomb to be implicated.
+    -- If someone is lingering near a freshly armed C4, that's extremely suspicious.
+    local planterDist = planter:GetPos():Distance(c4:GetPos())
+    local canSeePlanter = TTTBots.Lib.CanSeeArc(bot, planter:GetPos(), 120)
+
+    if canSeePlanter and planterDist < 800 then
+        local morality = bot.components.morality
+        if morality then
+            morality:ChangeSuspicion(planter, "PlantC4")
+        end
+    end
 end
 
 ---@realm server
 function Match.BotsTrySpotC4()
-    for i, bot in pairs(TTTBots.Bots) do
+    for i, bot in ipairs(TTTBots.Bots) do
         if not TTTBots.Lib.IsPlayerAlive(bot) then continue end
         if not TTTBots.Roles.GetRoleFor(bot):GetDefusesC4() then continue end
 
