@@ -37,8 +37,7 @@ function CreateDeputy.Validate(bot)
     if bot.attackTarget ~= nil then return false end
     local inv = bot:BotInventory()
     if not (inv and inv:GetSheriffGun()) then return false end
-    local chance = math.random(0, 100) <= 4
-    return CreateDeputy.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and chance)
+    return CreateDeputy.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and lib.TestPercent(4))
 end
 
 --- Called when the behavior is started.

@@ -36,8 +36,7 @@ function CreateSidekick.Validate(bot)
     if bot.attackTarget ~= nil then return false end
     local inv = bot:BotInventory()
     if not (inv and inv:GetJackalGun()) then return false end
-    local chance = math.random(0, 100) <= 2
-    return CreateSidekick.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and chance)
+    return CreateSidekick.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and lib.TestPercent(2))
 end
 
 --- Called when the behavior is started. Return STATUS.RUNNING to continue running.

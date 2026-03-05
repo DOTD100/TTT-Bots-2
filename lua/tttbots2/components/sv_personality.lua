@@ -5,8 +5,6 @@ local lib = TTTBots.Lib
 ---@class CPersonality : Component
 local BotPersonality = TTTBots.Components.Personality
 
-BotPersonality.Traits = TTTBots.Traits
-
 TTTBots.Lib.MakeComponentNew(BotPersonality, "Personality")
 
 function BotPersonality:Initialize(bot)
@@ -14,6 +12,7 @@ function BotPersonality:Initialize(bot)
     bot.components = bot.components or {}
     bot.components.personality = self
 
+    self.Traits = TTTBots.Traits  -- resolved at bot-creation time, after sh_traits.lua is loaded
     self.componentID = string.format("Personality (%s)", lib.GenerateID()) -- Component ID, used for debugging
     self.gender = (math.random(1, 100) < 50 and "male") or "female"
     self.HIM = (self.gender == "male" and "him") or "her"
@@ -91,7 +90,7 @@ function BotPersonality:GetTraitData()
     if self.traitData then return self.traitData end
     self.traitData = {}
     for _, trait in ipairs(self.traits) do
-        table.insert(self.traitData, BotPersonality.Traits[trait])
+        table.insert(self.traitData, self.Traits[trait])
     end
     return self.traitData
 end

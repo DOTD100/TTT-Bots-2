@@ -199,11 +199,11 @@ function TTTBots.Behaviors.RunTree(bot, tree)
 end
 
 function TTTBots.Behaviors.RunTreeOnBots()
-    for _, bot in ipairs(TTTBots.Bots) do
-        TTTBots.Behaviors.RunTree(
-            bot,
-            TTTBots.Behaviors.GetTreeFor(bot)
-        )
+    local bots = TTTBots.Bots
+    local RunTree = TTTBots.Behaviors.RunTree
+    local GetTreeFor = TTTBots.Behaviors.GetTreeFor
+    for _, bot in ipairs(bots) do
+        RunTree(bot, GetTreeFor(bot))
     end
 end
 

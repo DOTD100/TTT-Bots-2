@@ -168,7 +168,7 @@ end
 function BotMorality:GetRandomVictimFrom(playerlist)
     local tbl = {}
 
-    for i, player in pairs(playerlist) do
+    for _, player in ipairs(playerlist) do
         if player:IsBot() then
             local victim = player:GetTraitMult("victim")
             table.insert(tbl, lib.SetWeight(player, victim))
@@ -363,7 +363,7 @@ hook.Add("PlayerDeath", "TTTBots.Components.Morality.PlayerDeath", function(vict
         local witnesses = lib.GetAllWitnesses(attacker:EyePos(), true)
         table.insert(witnesses, victim)
 
-        for i, witness in pairs(witnesses) do
+        for _, witness in ipairs(witnesses) do
             if witness and witness.components then
                 witness.components.morality:OnWitnessKill(victim, weapon, attacker)
             end
@@ -635,7 +635,7 @@ hook.Add("PlayerHurt", "TTTBots.Components.Morality.PlayerHurt", function(victim
     local witnesses = lib.GetAllWitnesses(attacker:EyePos(), true)
     table.insert(witnesses, victim)
 
-    for i, witness in pairs(witnesses) do
+    for _, witness in ipairs(witnesses) do
         if witness and witness.components then
             witness.components.morality:OnWitnessHurt(victim, attacker, healthRemaining, damageTaken)
             hook.Run("TTTBotsOnWitnessHurt", witness, victim, attacker, healthRemaining, damageTaken)
@@ -758,8 +758,8 @@ end
 
 local function preventAttackAlly(bot)
     local attackTarget = bot.attackTarget
-    local isAllies = TTTBots.Roles.IsAllies(bot, attackTarget)
-    if isAllies then
+    if not (attackTarget and IsValid(attackTarget)) then return end
+    if TTTBots.Roles.IsAllies(bot, attackTarget) then
         bot:SetAttackTarget(nil)
     end
 end

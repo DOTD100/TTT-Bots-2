@@ -44,8 +44,7 @@ function Brainwash.Validate(bot)
     if bot.attackTarget ~= nil then return false end
     local inv = bot:BotInventory()
     if not (inv and inv:GetSlaveDeagle()) then return false end
-    local chance = math.random(0, 100) <= 3
-    return Brainwash.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and chance)
+    return Brainwash.ValidateTarget(bot) or (TTTBots.Match.IsRoundActive() and lib.TestPercent(3))
 end
 
 ---@param bot Bot

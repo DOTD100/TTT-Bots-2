@@ -117,7 +117,7 @@ local ladderProximityCache = {}
 
 local function updateOrGetLadderProxCache(ladder)
     local cacheEntry = ladderProximityCache[ladder]
-    if not (cacheEntry and cacheEntry.expires < CurTime()) then
+    if not (cacheEntry and cacheEntry.expires > CurTime()) then
         local proxCache = {
             expires = CurTime() + 3,
             players = {},
@@ -181,7 +181,7 @@ local navAreaProxCache = {}
 
 local function updateOrGetNavProxCache(nav)
     local cacheEntry = navAreaProxCache[nav]
-    if not (cacheEntry and cacheEntry.expires < CurTime()) then
+    if not (cacheEntry and cacheEntry.expires > CurTime()) then
         local proxCache = {
             expires = CurTime() + 5,
             players = {},
@@ -193,7 +193,7 @@ local function updateOrGetNavProxCache(nav)
             if not TTTBots.Lib.IsPlayerAlive(ply) then continue end
             local center = nav:GetCenter()
             local threshold = nav:GetSizeX() * 2
-            if (center:DistToSqr(ply:GetPos()) < threshold) then
+            if (center:DistToSqr(ply:GetPos()) < threshold * threshold) then
                 table.insert(proxCache.players, ply)
                 proxCache.nPlayers = proxCache.nPlayers + 1
             end

@@ -1,5 +1,21 @@
 TTTBots.Lib = TTTBots.Lib or {}
 
+--- Creates a standard :New(bot) constructor for a component class.
+---@param componentClass table The component class table
+---@param componentName string Human-readable name for debug output
+---@realm server
+function TTTBots.Lib.MakeComponentNew(componentClass, componentName)
+    componentClass.New = function(self, bot)
+        local instance = {}
+        setmetatable(instance, { __index = function(t, k) return componentClass[k] end })
+        instance:Initialize(bot)
+        if TTTBots.Lib.GetConVarBool("debug_misc") then
+            print("Initialized " .. componentName .. " for bot " .. bot:Nick())
+        end
+        return instance
+    end
+end
+
 if SERVER then
     include("tttbots2/lib/sv_namemanager.lua")
     -- Import components for bot creation
@@ -187,11 +203,14 @@ function TTTBots.Lib.MakeTargetFunctions(config)
     local findTarget = config.findTarget or TTTBots.Lib.FindIsolatedTarget
     local validateExtra = config.validateExtra
 
+    -- Cache lib functions as upvalues to avoid global table lookups on hot paths
+    local _rateIsolation = TTTBots.Lib.RateIsolation
+    local _isPlayerAlive = TTTBots.Lib.IsPlayerAlive
+
     local funcs = {}
 
-    function funcs.RateIsolation(bot, other)
-        return TTTBots.Lib.RateIsolation(bot, other)
-    end
+    -- Expose lib.RateIsolation directly (no wrapper overhead)
+    funcs.RateIsolation = _rateIsolation
 
     function funcs.FindTarget(bot)
         return findTarget(bot)
@@ -206,7 +225,7 @@ function TTTBots.Lib.MakeTargetFunctions(config)
         bot[targetField] = target or funcs.FindTarget(bot)
         if scoreField then
             bot[scoreField] = isolationScore
-                or (bot[targetField] and funcs.RateIsolation(bot, bot[targetField]) or 0)
+                or (bot[targetField] and _rateIsolation(bot, bot[targetField]) or 0)
         end
     end
 
@@ -216,7 +235,7 @@ function TTTBots.Lib.MakeTargetFunctions(config)
 
     function funcs.ValidateTarget(bot, target)
         target = target or funcs.GetTarget(bot)
-        if not (target and IsValid(target) and TTTBots.Lib.IsPlayerAlive(target)) then
+        if not (target and IsValid(target) and _isPlayerAlive(target)) then
             return false
         end
         if validateExtra then
@@ -225,33 +244,27 @@ function TTTBots.Lib.MakeTargetFunctions(config)
         return true
     end
 
-    function funcs.CheckForBetterTarget(bot)
-        local currentScore = (scoreField and bot[scoreField]) or -math.huge
-        local alternative, altScore = funcs.FindTarget(bot)
-        if not alternative then return end
-        if not funcs.ValidateTarget(bot, alternative) then return end
-        if altScore and altScore - currentScore >= 1 then
-            funcs.SetTarget(bot, alternative, altScore)
+    -- Build CheckForBetterTarget without a runtime scoreField guard (scoreField is immutable per behavior)
+    if scoreField then
+        function funcs.CheckForBetterTarget(bot)
+            local currentScore = bot[scoreField] or -math.huge
+            local alternative, altScore = funcs.FindTarget(bot)
+            if not alternative then return end
+            if not funcs.ValidateTarget(bot, alternative) then return end
+            if altScore and altScore - currentScore >= 1 then
+                funcs.SetTarget(bot, alternative, altScore)
+            end
+        end
+    else
+        function funcs.CheckForBetterTarget(bot)
+            local alternative = funcs.FindTarget(bot)
+            if not alternative then return end
+            if not funcs.ValidateTarget(bot, alternative) then return end
+            funcs.SetTarget(bot, alternative)
         end
     end
 
     return funcs
-end
-
---- Creates a standard :New(bot) constructor for a component class.
----@param componentClass table The component class table
----@param componentName string Human-readable name for debug output
----@realm server
-function TTTBots.Lib.MakeComponentNew(componentClass, componentName)
-    componentClass.New = function(self, bot)
-        local instance = {}
-        setmetatable(instance, { __index = function(t, k) return componentClass[k] end })
-        instance:Initialize(bot)
-        if TTTBots.Lib.GetConVarBool("debug_misc") then
-            print("Initialized " .. componentName .. " for bot " .. bot:Nick())
-        end
-        return instance
-    end
 end
 
 ---Returns a table of living bots, according to the IsPlayerAlive cache.

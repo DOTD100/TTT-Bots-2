@@ -11,19 +11,6 @@ InvestigateCorpse.Interruptible = true
 
 local STATUS = TTTBots.STATUS
 
----@deprecated deprecated until distance check, technically works tho
-function InvestigateCorpse.GetVisibleCorpses(bot)
-    local corpses = TTTBots.Match.Corpses
-    local visibleCorpses = {}
-    for i, corpse in pairs(corpses) do
-        local visible = bot:VisibleVec(corpse:GetPos())
-        if visible then
-            table.insert(visibleCorpses, corpse)
-        end
-    end
-    return visibleCorpses
-end
-
 local CORPSE_MAXDIST = 2000
 function InvestigateCorpse.GetVisibleUnidentified(bot)
     local corpses = TTTBots.Match.Corpses

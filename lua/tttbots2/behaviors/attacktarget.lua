@@ -420,40 +420,17 @@ end
 ---@return boolean isValid
 function Attack.ValidateTarget(bot)
     local target = bot.attackTarget
-
-    local hasTarget = (target and target ~= NULL) and true or false
-    if target == NULL or not IsValid(target) then return false end
-    local targetIsValid = target and target:IsValid() or false
-    local targetIsAlive = target and target:Alive() or false
-    local targetIsPlayer = target and target:IsPlayer() or false
-    local targetIsNPC = target and target:IsNPC() or false
-    local targetIsPlayerAndAlive = targetIsPlayer and TTTBots.Lib.IsPlayerAlive(target) or false
-    local targetIsNPCAndAlive = targetIsNPC and target:Health() > 0 or false
-    local targetIsPlayerOrNPCAndAlive = targetIsPlayerAndAlive or targetIsNPCAndAlive or false
-
-    -- print(bot:Nick() .. " validating attack target behavior:")
-    -- print("| hasTarget: " .. tostring(hasTarget))
-    -- print("| targetIsValid: " .. tostring(targetIsValid))
-    -- print("| targetIsAlive: " .. tostring(targetIsAlive))
-    -- print("| targetIsPlayer: " .. tostring(targetIsPlayer))
-    -- print("| targetIsNPC: " .. tostring(targetIsNPC))
-    -- print("| targetIsPlayerAndAlive: " .. tostring(targetIsPlayerAndAlive))
-    -- print("| targetIsNPCAndAlive: " .. tostring(targetIsNPCAndAlive))
-    -- print("| targetIsPlayerOrNPCAndAlive: " .. tostring(targetIsPlayerOrNPCAndAlive))
-    -- print("------------------")
-
-    local checkPassed = (
-        hasTarget
-        and targetIsValid
-        and targetIsAlive
-        and targetIsPlayerOrNPCAndAlive
-    )
-
-    if not checkPassed then
+    if not (target and IsValid(target) and target:Alive()) then
         bot:SetAttackTarget(nil)
+        return false
     end
-
-    return checkPassed
+    local isAlive = (target:IsPlayer() and TTTBots.Lib.IsPlayerAlive(target))
+        or (target:IsNPC() and target:Health() > 0)
+    if not isAlive then
+        bot:SetAttackTarget(nil)
+        return false
+    end
+    return true
 end
 
 function Attack.IsTargetAlly(bot)
