@@ -15,6 +15,7 @@ RoiderAttack.Interruptible = true
 
 RoiderAttack.RUSH_RANGE = 160      --- Max distance to swing the crowbar
 RoiderAttack.CLOSE_RANGE = 70      --- Distance at which we stop moving and just swing
+RoiderAttack.EQUIP_RANGE = 300     --- Distance at which the Roider switches to the crowbar
 RoiderAttack.SEEK_TIMEOUT = 15     --- Seconds before giving up on an unseen target
 
 local STATUS = TTTBots.STATUS
@@ -97,8 +98,10 @@ function RoiderAttack.Engage(bot, target)
     local targetPos = target:GetPos()
     local distToTarget = bot:GetPos():Distance(targetPos)
 
-    -- Always equip crowbar
-    RoiderAttack.EquipCrowbar(bot)
+    -- Equip crowbar only once close enough to use it
+    if distToTarget <= RoiderAttack.EQUIP_RANGE then
+        RoiderAttack.EquipCrowbar(bot)
+    end
 
     -- Rush towards the target - Roiders are melee, so always close the gap
     if distToTarget > RoiderAttack.CLOSE_RANGE then
@@ -153,8 +156,11 @@ function RoiderAttack.OnRunning(bot)
         return STATUS.FAILURE
     end
 
-    -- Force crowbar equipped
-    RoiderAttack.EquipCrowbar(bot)
+    -- Equip crowbar only when close enough to use it
+    local attackTarget = bot.attackTarget
+    if IsValid(attackTarget) and bot:GetPos():Distance(attackTarget:GetPos()) <= RoiderAttack.EQUIP_RANGE then
+        RoiderAttack.EquipCrowbar(bot)
+    end
 
     -- If the bot has no valid active weapon, bail out to avoid NULL entity errors
     -- in the Roider addon's EntityTakeDamage hook.

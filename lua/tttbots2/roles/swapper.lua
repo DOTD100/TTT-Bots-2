@@ -2,9 +2,6 @@
 --- Jester-team role that swaps roles with whoever kills them.
 --- When the Swapper is killed, the killer becomes the new Swapper (with reduced
 --- health) and the Swapper revives with the killer's old role and equipment.
----
---- Addon: https://github.com/Guardian954/ttt2-role_swapper_git
----
 --- Bot strategy: The Swapper WANTS to be killed — so it acts provocatively,
 --- getting in people's faces and being generally suspicious. It uses the Stalk
 --- behavior to follow players closely. The existing Jester protection system
