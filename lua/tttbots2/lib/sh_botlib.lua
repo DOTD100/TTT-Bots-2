@@ -1278,9 +1278,7 @@ function TTTBots.Lib.VoluntaryDisconnect(bot, reason)
     timer.Simple(math.random(1, 3), function()
         if not bot then return end
         if not IsValid(bot) then return end
-        bot:Kick(string.format(
-            "Disconnect: %s",
-            reason or "UNDEFINED"))
+        bot:Kick("")
     end)
 
     -- The auto rejoin should only happen if there isn't a quota. If there is, then this will cause issues.

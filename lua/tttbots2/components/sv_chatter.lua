@@ -137,6 +137,14 @@ function BotChatter:Say(text, teamOnly, ignoreDeath, callback)
     text = string.gsub(text, "%[BOT%] ", "")
     text = string.gsub(text, "%[bot%] ", "")
     text = self:TypoText(text)
+    -- If the bot is disconnecting, send immediately so the message isn't dropped when the
+    -- kick invalidates the entity before the typing timer fires.
+    if self.bot.disconnecting then
+        self:SayRaw(text, teamOnly)
+        self.typing = false
+        if callback then callback() end
+        return true
+    end
     timer.Simple(delay, function()
         if self.bot == NULL or not IsValid(self.bot) then return end
         if ignoreDeath or lib.IsPlayerAlive(self.bot) then

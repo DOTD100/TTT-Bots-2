@@ -57,6 +57,7 @@ function RoiderAttack.Seek(bot, target)
     local loco = bot:BotLocomotor()
     if not loco then return end
     loco.stopLookingAround = false
+    loco:SetForceForward(true)
     loco:StopAttack()
 
     ---@type CMemory
