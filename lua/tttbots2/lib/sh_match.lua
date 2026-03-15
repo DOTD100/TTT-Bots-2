@@ -187,11 +187,9 @@ function Match.WhoShotFirst(ply1, ply2)
     local hansolo = nil
     local oldestTime = math.huge
     for i, log in pairs(Match.DamageLogs) do
-        if (log.victim == ply1 or log.attacker == ply1) and (log.victim == ply2 or log.attacker == ply2) then
-            if log.time < oldestTime then
-                oldestTime = log.time
-                hansolo = log.attacker
-            end
+        if (log.victim == ply1 or log.attacker == ply1) and (log.victim == ply2 or log.attacker == ply2) and log.time < oldestTime then
+            oldestTime = log.time
+            hansolo = log.attacker
         end
     end
     return hansolo -- hehehehe get it?
@@ -240,11 +238,8 @@ function Match.OnBotSpotC4(bot, c4)
     local planterDist = planter:GetPos():Distance(c4:GetPos())
     local canSeePlanter = TTTBots.Lib.CanSeeArc(bot, planter:GetPos(), 120)
 
-    if canSeePlanter and planterDist < 800 then
-        local morality = bot.components.morality
-        if morality then
-            morality:ChangeSuspicion(planter, "PlantC4")
-        end
+    if canSeePlanter and planterDist < 800 and bot.components.morality then
+        bot.components.morality:ChangeSuspicion(planter, "PlantC4")
     end
 end
 

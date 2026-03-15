@@ -97,7 +97,6 @@ function TTTBots.Reload()
 
     -- Shorthands
     local Lib = TTTBots.Lib
-    local PathManager = TTTBots.PathManager
 
     TTTBots.Spots.CacheAllSpots() -- Cache all navmesh spots (cover, exposed, sniper spots, etc.)
     TTTBots.Lib.GetNavRegions()   -- Caches all nav regions

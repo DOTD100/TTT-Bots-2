@@ -105,13 +105,9 @@ net.Receive("TTTBots_RequestData", function(len, ply)
             numCanSee = #memory:GetRecentlySeenPlayers(),
             numKnownPos = numKnownPos,
             numKnownAlive = numKnownAlive,
-            attackTargetName = (
-                bot.attackTarget
-                and (
-                    bot.attackTarget:IsPlayer() and bot.attackTarget:Nick()
-                    or bot.attackTarget:GetClass())
-                or "No target"
-            ),
+            attackTargetName = bot.attackTarget
+                and (bot.attackTarget:IsPlayer() and bot.attackTarget:Nick() or bot.attackTarget:GetClass())
+                or "No target",
             attackBehaviorMode = abm and (abm .. " (" .. abmTxt .. ")") or "None",
             behaviorName = behaviorName,
             behaviorDesc = behaviorDesc,

@@ -10,7 +10,7 @@ TTTBots.Locale = {
 ---@param text string The content of the localized string
 ---@param lang string The language to add the localized string to, e.g. "en"
 function TTTBots.Locale.AddLocalizedString(name, text, lang)
-    local lang = lang or "en"
+    lang = lang or "en"
     TTTBots.Locale[lang] = TTTBots.Locale[lang] or {}
     TTTBots.Locale[lang][name] = text
 end
@@ -52,7 +52,7 @@ end
 ---@param lang string The language to add the line to, e.g. "en"
 ---@param archetype string A string corresponding to a TTTBots.Archetypes enum
 function TTTBots.Locale.AddLine(event_name, line, lang, archetype)
-    local lang = lang or "en"
+    lang = lang or "en"
     local langtable = TTTBots.Locale[lang]
     if not langtable then
         TTTBots.Locale[lang] = {}
@@ -74,7 +74,7 @@ end
 ---@return string line The formatted line
 function TTTBots.Locale.FormatLine(line, params)
     if not line then return "" end
-    if not (params) then return line end
+    if not params then return line end
     for key, value in pairs(params) do
         line = line:gsub("{{" .. tostring(key) .. "}}", tostring(value))
     end
@@ -170,7 +170,7 @@ end
 
 --- Registers an event type with the given priority. This is used to cull undesired chatter (user customization)
 function TTTBots.Locale.RegisterCategory(event_name, lang, priority)
-    local lang = lang or "en"
+    lang = lang or "en"
     local langtable = TTTBots.Locale[lang]
     if not langtable then
         TTTBots.Locale[lang] = {}

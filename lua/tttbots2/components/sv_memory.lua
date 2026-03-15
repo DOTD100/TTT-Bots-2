@@ -330,6 +330,7 @@ function Memory:GetRecentlySeenPlayers(withinSecs)
     local allPlys = lib.GetAlivePlayers()
     for i = 1, #allPlys do
         local ply = allPlys[i]
+        if not IsValid(ply) then continue end
         local nick = ply:Nick()
         local pnp = self.playerKnownPositions[nick]
         if pnp and pnp.timeSince() < withinSecs then
@@ -378,7 +379,7 @@ end
 function Memory:Think()
     self.tick = self.tick + 1
     local RUNRATE = 3
-    if not (self.tick % RUNRATE == 0) then return end
+    if not (self.tick % RUNRATE ~= 0) then return end
 
     self:UpdateKnownPositions()
     self:UpdatePlayerLifeStates()
@@ -468,10 +469,9 @@ function Memory:HandleSound(info, soundData)
     -- Sound-based position tracking: if we heard a gunshot/death/explosion from a
     -- known player, update our memory with their suspected position even if we can't
     -- see them. This lets bots path toward the source of gunfire.
-    if tbl.ply and IsValid(tbl.ply) and tbl.ply ~= bot and tbl.sourceIsPly then
-        if info.SoundName == "Gunshot" or info.SoundName == "Death" or info.SoundName == "Explosion" then
-            self:UpdateKnownPositionFor(tbl.ply, soundPos)
-        end
+    if tbl.ply and IsValid(tbl.ply) and tbl.ply ~= bot and tbl.sourceIsPly
+        and (info.SoundName == "Gunshot" or info.SoundName == "Death" or info.SoundName == "Explosion") then
+        self:UpdateKnownPositionFor(tbl.ply, soundPos)
     end
 
     return true

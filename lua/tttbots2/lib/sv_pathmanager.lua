@@ -527,7 +527,7 @@ function TTTBots.PathManager.RequestPath(owner, startPos, finishPos, isAreas)
     end
 
     -- assert(TTTBots.Lib.IsPlayerAlive(owner), "Owner must be a living player.")
-    if not TTTBots.Lib.IsPlayerAlive(owner) then 
+    if not TTTBots.Lib.IsPlayerAlive(owner) then
         ErrorNoHaltWithStack("Owner must be a living player.")
         return "error", false, "owner_not_alive"
     end
@@ -536,7 +536,7 @@ function TTTBots.PathManager.RequestPath(owner, startPos, finishPos, isAreas)
         TTTBots.Lib.GetNearestNavArea(startPos)  --navmesh.GetNearestNavArea(startPos)
     local finishArea = (isAreas and finishPos) or
         TTTBots.Lib.GetNearestNavArea(finishPos) --navmesh.GetNearestNavArea(finishPos)
-    
+
     if not startArea then
         ErrorNoHaltWithStack("Start nil")
         return "error", false, "start_nil"
@@ -620,6 +620,57 @@ local function bezierQuadratic(p0, p1, p2, t)
     local y = (1 - t) ^ 2 * p0.y + 2 * (1 - t) * t * p1.y + t ^ 2 * p2.y
     local z = (1 - t) ^ 2 * p0.z + 2 * (1 - t) * t * p1.z + t ^ 2 * p2.z
     return Vector(x, y, z)
+end
+
+local BEZIER_SAMPLES = 3   -- Intermediate points inserted per walk corner (higher = smoother, more waypoints)
+local BEZIER_MIN_SEG = 80  -- Both flanking segments must be at least this long to apply smoothing.
+                           -- Prevents very short arcs whose waypoints fall within the locomotor's
+                           -- completion threshold, which causes rapid-fire waypoint cycling and walking.
+
+-- Replaces each interior "walk" corner with a bezier arc so bots round corners instead of pivoting.
+-- For each consecutive triple (A, B, C) of walk waypoints, the arc runs from mid(A,B) to mid(B,C)
+-- with B as the control point. Arcs from adjacent triples share their endpoints, guaranteeing continuity.
+-- Ladder, jump, and short-segment corners are left untouched.
+local function applyBezierSmoothing(points)
+    if #points < 3 then return points end
+    local smoothed = {}
+
+    smoothed[#smoothed + 1] = points[1]
+
+    for i = 2, #points - 1 do
+        local prev = points[i - 1]
+        local curr = points[i]
+        local next = points[i + 1]
+
+        -- Only smooth walk corners where both flanking segments are long enough
+        if curr.type ~= "walk" or prev.type ~= "walk" or next.type ~= "walk"
+            or prev.pos:Distance(curr.pos) < BEZIER_MIN_SEG
+            or curr.pos:Distance(next.pos) < BEZIER_MIN_SEG
+        then
+            smoothed[#smoothed + 1] = curr
+            continue
+        end
+
+        -- Control point is the corner; arc endpoints are midpoints of the flanking segments
+        local p0 = (prev.pos + curr.pos) * 0.5
+        local p1 = curr.pos
+        local p2 = (curr.pos + next.pos) * 0.5
+
+        -- Sample t in (0, 1) exclusive — t=0 is the end of the previous arc, t=1 becomes p0 of the next
+        for s = 0, BEZIER_SAMPLES - 1 do
+            local t = s / BEZIER_SAMPLES
+            smoothed[#smoothed + 1] = {
+                pos        = bezierQuadratic(p0, p1, p2, t),
+                area       = curr.area,
+                type       = "walk",
+                ladder_dir = nil,
+            }
+        end
+    end
+
+    smoothed[#smoothed + 1] = points[#points]
+
+    return smoothed
 end
 
 -- Processes a table of vectors and returns a table of vectors that are placed on the navmesh,
@@ -900,7 +951,7 @@ function TTTBots.PathManager.PathPostProcess(path)
         end
     end
 
-    return points
+    return applyBezierSmoothing(points)
 end
 
 --------------------------------------

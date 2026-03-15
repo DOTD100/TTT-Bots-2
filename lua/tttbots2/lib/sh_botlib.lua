@@ -63,7 +63,7 @@ local function updateAlivePlayers()
         alivePlayers[ply] = (IsValid(ply) and not (ply:IsSpec()) and ply:Alive() and ply:Health() > 0)
     end
 end
-if SERVER then timer.Create("TTTBots.Lib.AlivePlayersInterval", 1 / (TTTBots.Tickrate), 0, updateAlivePlayers) end
+if SERVER then timer.Create("TTTBots.Lib.AlivePlayersInterval", 1 / TTTBots.Tickrate, 0, updateAlivePlayers) end
 
 
 --- Check if not :IsSpec and :Alive
@@ -431,10 +431,8 @@ function TTTBots.Lib.GetAllWitnessesBasic(pos, playerTbl, ignorePly)
         local ply = playerTbl[i]
         if ply == NULL or not IsValid(ply) then continue end
         if ply == ignorePly then continue end
-        if ply:GetPos():DistToSqr(pos) <= RANGE_SQR then
-            if ply:VisibleVec(pos) then
-                witnesses[#witnesses + 1] = ply
-            end
+        if ply:GetPos():DistToSqr(pos) <= RANGE_SQR and ply:VisibleVec(pos) then
+            witnesses[#witnesses + 1] = ply
         end
     end
     return witnesses
@@ -450,10 +448,8 @@ function TTTBots.Lib.GetAllWitnesses(pos, botsOnly)
     local plys = botsOnly and TTTBots.Bots or player.GetAll()
     for i = 1, #plys do
         local ply = plys[i]
-        if IsValid(ply) and TTTBots.Lib.IsPlayerAlive(ply) then
-            if TTTBots.Lib.CanSeeArc(ply, pos, 90) then
-                witnesses[#witnesses + 1] = ply
-            end
+        if IsValid(ply) and TTTBots.Lib.IsPlayerAlive(ply) and TTTBots.Lib.CanSeeArc(ply, pos, 90) then
+            witnesses[#witnesses + 1] = ply
         end
     end
     return witnesses
@@ -485,7 +481,7 @@ function TTTBots.Lib.UpdateQuota()
     local nPlayers = #players -- All players in the match, including bots, excluding spectators.
     local nBots = #TTTBots.Bots
     local slotsLeft = game.MaxPlayers() - nPlayers
-    
+
     if TTTBots.Lib.GetConVarBool("enable_quota_when_only_spectators") then
         local canPlay = false
         for _, ply in ipairs(players) do
@@ -495,7 +491,7 @@ function TTTBots.Lib.UpdateQuota()
                     net.Send(ply)
                     ply.QueryingSpectateMode = true -- As to not overload anyones network with queries. Worse network would result in more queries, and worse networks are overloaded faster.
                 else
-                    if ply.forceSpectate ~= nil and ply.forceSpectate == false then 
+                    if ply.forceSpectate ~= nil and ply.forceSpectate == false then
                         canPlay = true
                         break
                     end
@@ -705,7 +701,7 @@ end
 function TTTBots.Lib.IncludeDirectory(path)
     path = path .. "/"
 
-    local files, directories = file.Find(path .. "*", "LUA")
+    local files, _ = file.Find(path .. "*", "LUA")
     local loadedLuaList = {}
 
     for _, v in ipairs(files) do
@@ -837,14 +833,9 @@ function TTTBots.Lib.GetAllVisible(pos, nonTeammatesOnly, caller)
     local allPlys = TTTBots.Lib.GetAlivePlayers() -- Use cached alive players
     for i = 1, #allPlys do
         local ply = allPlys[i]
-        if IsValid(ply) then
-            if nonTeammatesOnly and caller then
-                -- Only include non-allies
-                if TTTBots.Roles.IsAllies(caller, ply) then continue end
-            end
-            if ply:VisibleVec(pos) then
-                witnesses[#witnesses + 1] = ply
-            end
+        if IsValid(ply) and ply:VisibleVec(pos) then
+            if nonTeammatesOnly and caller and TTTBots.Roles.IsAllies(caller, ply) then continue end
+            witnesses[#witnesses + 1] = ply
         end
     end
     return witnesses
@@ -1096,7 +1087,7 @@ function TTTBots.Lib.CreateBot(name)
         print(err)
         print(debug.traceback())
     end
-    local success, bot = xpcall(function() return createPlayerBot(name) end, failFunc, name)
+    local _, bot = xpcall(function() return createPlayerBot(name) end, failFunc, name)
 
     return bot or nil
 end
@@ -1172,20 +1163,20 @@ end
 
 --- Trace line from eyes (if fromEyes, else feet) to the given position. Returns the trace result.
 --- This is used to cut corners when pathfinding.
----@param player Player
+---@param ply Player
 ---@param fromEyes boolean Optional, defaults to false
 ---@param finish Vector Vector
 ---@return any TraceResult
 ---@realm shared
-function TTTBots.Lib.TraceVisibilityLine(player, fromEyes, finish)
-    local startPos = player:GetPos()
+function TTTBots.Lib.TraceVisibilityLine(ply, fromEyes, finish)
+    local startPos = ply:GetPos()
     if fromEyes then
-        startPos = player:EyePos()
+        startPos = ply:EyePos()
     end
     local trace = util.TraceLine({
         start = startPos,
         endpos = finish,
-        filter = player,
+        filter = ply,
         mask = MASK_ALL
     })
     return trace
@@ -1203,7 +1194,7 @@ function TTTBots.Lib.GetClosest(entities, pos, extraCallback)
     local closest = nil
     local closestDist = 99999
     for i, v in pairs(entities) do
-        if extraCallback then if not extraCallback(v) then continue end end
+        if extraCallback and not extraCallback(v) then continue end
         local vIsPlayer = IsValid(v) and v:IsPlayer()
         if vIsPlayer and not TTTBots.Lib.IsPlayerAlive(v) then continue end
         local dist = v:GetPos():Distance(pos)
@@ -1294,11 +1285,11 @@ end
 --- return the component 'type' of the bot, or nil if doesn't have one
 ---@deprecated
 ---@param bot Bot
----@param type string
+---@param compType string
 ---@return Component Component
 ---@realm server
-function TTTBots.Lib.GetComp(bot, type)
-    return bot.components[type]
+function TTTBots.Lib.GetComp(bot, compType)
+    return bot.components[compType]
 end
 
 function TTTBots.Lib.WepClassExists(classname)
@@ -1349,7 +1340,7 @@ end
 function TTTBots.Lib.DeepCopy(orig)
     local orig_type = type(orig)
     local copy
-    if orig_type == 'table' then
+    if orig_type == "table" then
         copy = {}
         for orig_key, orig_value in next, orig, nil do
             copy[TTTBots.Lib.DeepCopy(orig_key)] = TTTBots.Lib.DeepCopy(orig_value)
@@ -1532,11 +1523,9 @@ function TTTBots.Lib.FindFleeSpot(bot, dangerPos, fleeDist)
             local center = nav:GetCenter()
             local distFromDanger = center:Distance(dangerPos)
             local distFromBot = center:Distance(botPos)
-            if distFromDanger > fleeDist and distFromBot < 3000 then
-                if distFromDanger > bestDist then
-                    bestDist = distFromDanger
-                    bestSpot = center
-                end
+            if distFromDanger > fleeDist and distFromBot < 3000 and distFromDanger > bestDist then
+                bestDist = distFromDanger
+                bestSpot = center
             end
         end
         -- Relaxed pass: just pick the farthest from danger
