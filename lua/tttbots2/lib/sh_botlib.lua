@@ -544,8 +544,8 @@ function TTTBots.Lib.UpdateQuota()
         -- If the bot's difficulty is too high or too low compared to the expected difficulty
         if botDifficulty < DIFF_MIN or botDifficulty > DIFF_MAX then
             print("Removing bot of difficulty", botDifficulty, DIFF_MIN, DIFF_MAX)
-            bot:Kick()
-            break -- Only do one at a time :)
+            TTTBots.Lib.VoluntaryDisconnect(bot, "Boredom")
+            break
         end
     end
 end
@@ -1153,7 +1153,7 @@ function TTTBots.Lib.RemoveBot(reason)
     for i, bot in pairs(bots) do
         if not IsValid(bot) then continue end
         if not TTTBots.Lib.IsPlayerAlive(bot) or not TTTBots.Match.IsRoundActive() then
-            bot:Kick(reason or "Removed by server")
+            TTTBots.Lib.VoluntaryDisconnect(bot, "Boredom")
             return true
         end
     end
@@ -1269,7 +1269,7 @@ function TTTBots.Lib.VoluntaryDisconnect(bot, reason)
     timer.Simple(math.random(1, 3), function()
         if not bot then return end
         if not IsValid(bot) then return end
-        bot:Kick("")
+        bot:Kick("Disconnect by user.")
     end)
 
     -- The auto rejoin should only happen if there isn't a quota. If there is, then this will cause issues.

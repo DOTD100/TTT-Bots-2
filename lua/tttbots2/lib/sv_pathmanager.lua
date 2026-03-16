@@ -400,7 +400,7 @@ function TTTBots.PathManager.Astar2(start, goal, _playerFilter)
         if (cn % cpf == 0) then
             coroutine.yield(cn)
         end
-        if cn > 600 then -- 600 is the max number of nodes that can be checked before the pathfinder gives up
+        if cn > math.min(600, totalNeighbors) then -- Cap iterations at 600 or the total nav area count, whichever is smaller
             return false
         end
         ---------------------------------- end coroutine stuff
@@ -888,13 +888,17 @@ function TTTBots.PathManager.PathPostProcess(path)
             climbDir = "down"
         elseif nextIsLadder and not nextIsLower then
             climbDir = "up"
-        elseif nextIsLadder then
+        -- elseif nextIsLadder then
             -- print("Couldn't resolve climb direction; " .. tostring(nextIsLadder) .. ", " .. tostring(nextIsLower))
         end
 
         -- Handle ladder areas.
         if isLadder then
-            -- if not climbDir then print("No ladder dir in node #" .. i) end
+            if not climbDir and lastIsLower then
+                climbDir = "up"
+            elseif not climbDir and lastIsLower == false then
+                climbDir = "down"
+            end
             -- print("Direction of ladder travel is " .. tostring(climbDir) .. " in node #" .. i)
             local ladderFwd = navArea:GetNormal() * -16
             local ladderStart = (climbDir == "up") and navArea:GetBottom2() or navArea:GetTop2()
@@ -903,7 +907,7 @@ function TTTBots.PathManager.PathPostProcess(path)
             addPointToPoints(points, ladderGoal, navArea, "ladder", climbDir)
 
             if climbDir == "up" and nextNavArea then
-                local ladderOffPoint = navArea:GetTop2() + Vector(0, 0, 32)
+                local ladderOffPoint = navArea:GetTop2() + Vector(0, 0, 32) + navArea:GetNormal() * LADDER_TOP_FORWARD_OFFSET
                 local ladderDismountGoal = nextNavArea:GetClosestPointOnArea(ladderOffPoint) or nextNavArea:GetCenter()
                 addPointToPoints(points, ladderDismountGoal, navArea, nextNavArea, climbDir)
             end
@@ -1092,7 +1096,7 @@ hook.Add("Tick", "TTTBots.PathManager.PathCoroutine", function()
     local noErrs, result = coroutine.resume(queuedPath.path, queuedPath.startArea, queuedPath.finishArea,
         { queuedPath.owner })
 
-    if not noErrs then print("Had errors generating;", result) end
+    if not noErrs then print(fr("Had errors generating path %s for %s: %s", queuedPath.pathID, tostring(queuedPath.owner), result)) end
     if (type(result) == "boolean" or type(result) == "table") then
         local path = result
         local pathID = queuedPath.pathID
@@ -1105,6 +1109,7 @@ hook.Add("Tick", "TTTBots.PathManager.PathCoroutine", function()
         -- Cache the path
         TTTBots.PathManager.cachedPaths[pathID] = {
             path = path,
+            owner = owner,
             generatedAt = CurTime(),
             TimeSince = function(self) return CurTime() - self.generatedAt end,
             processedPath = processedPath

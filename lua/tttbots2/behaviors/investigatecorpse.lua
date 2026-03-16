@@ -95,7 +95,7 @@ function InvestigateCorpse.OnRunning(bot)
         return STATUS.FAILURE
     end
     local loco = bot:BotLocomotor()
-    loco:LookAt(bot.corpseTarget:GetPos())
+    loco:LookAt(bot.corpseTarget:GetPos() + Vector(0, 0, 10))
     loco:SetGoal(bot.corpseTarget:GetPos())
 
     local distToBody = bot:GetPos():Distance(bot.corpseTarget:GetPos())

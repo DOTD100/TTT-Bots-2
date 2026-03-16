@@ -176,6 +176,7 @@ function Attack.Engage(bot, targetPos)
     local weapon = inv:GetHeldWeaponInfo()
     if not weapon then return end
     local usingMelee = not weapon.is_gun
+    if not usingMelee then inv:ReloadIfNecessary(true) end
     local loco = bot:BotLocomotor() ---@type CLocomotor
     loco.stopLookingAround = true
 
@@ -251,8 +252,11 @@ function Attack.Engage(bot, targetPos)
     end
 
     if not tooFarToAttack then
-        if (Attack.LookingCloseToTarget(bot, target)) then
-            if not Attack.WillShootingTeamkill(bot, target) then -- make sure we aren't about to teamkill by mistake!!
+        local needsReload = weapon.is_gun and weapon.needs_reload
+        if needsReload then
+            loco:StopAttack()
+        elseif (Attack.LookingCloseToTarget(bot, target)) then
+            if not Attack.WillShootingTeamkill(bot, target) then
                 loco:StartAttack()
             end
 
@@ -291,6 +295,10 @@ function Attack.Engage(bot, targetPos)
             aimPoint = barrel:GetPos() + barrel:OBBCenter()
         end
     end
+
+    -- Allow roles to adjust aim point (e.g. for scaled models)
+    local adjustedAim = hook.Run("TTTBotsGetAimPoint", bot, target, aimPoint)
+    if adjustedAim then aimPoint = adjustedAim end
 
     Attack.HandleAttackMovement(bot, weapon, loco)
 

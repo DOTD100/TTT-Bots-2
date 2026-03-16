@@ -1,4 +1,4 @@
---- Copycat role support for TTT Bots 2.
+--- Copycat: transforms into another role using The Copycat Files weapon.
 
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_COPYCAT then return false end
@@ -38,14 +38,12 @@ copycat:SetCanHide(true)
 TTTBots.Roles.RegisterRole(copycat)
 
 -- Copycats always investigate corpses to learn roles.
-
 local function IsCopycat(ply)
     if not (IsValid(ply) and ply:IsPlayer()) then return false end
     local ok, role = pcall(ply.GetSubRole, ply)
     return ok and role == ROLE_COPYCAT
 end
 
---- Make Copycat bots always investigate corpses.
 local originalGetShould = TTTBots.Behaviors.InvestigateCorpse.GetShouldInvestigateCorpses
 if originalGetShould then
     TTTBots.Behaviors.InvestigateCorpse.GetShouldInvestigateCorpses = function(bot)
@@ -56,11 +54,9 @@ if originalGetShould then
     end
 end
 
--- Automated role selection from The Copycat Files.
-
+-- Preferred roles for auto-transform.
 local PREFERRED_ROLES = {}
 
---- Build preferred roles list at round start.
 local function BuildPreferredRoles()
     PREFERRED_ROLES = {}
     if ROLE_TRAITOR then table.insert(PREFERRED_ROLES, ROLE_TRAITOR) end
@@ -72,7 +68,6 @@ end
 
 hook.Add("TTTBeginRound", "TTTBots.copycat.buildPreferred", BuildPreferredRoles)
 
---- Returns the Copycat Files weapon if the bot has it.
 local function GetCopycatFiles(bot)
     if not (IsValid(bot) and bot:IsPlayer()) then return nil end
     for _, wep in pairs(bot:GetWeapons()) do
@@ -83,10 +78,8 @@ local function GetCopycatFiles(bot)
     return nil
 end
 
---- Returns available roles from The Copycat Files weapon.
 local function GetAvailableRoles(filesWep)
     if not IsValid(filesWep) then return {} end
-    -- Check common storage patterns
     if filesWep.roles and istable(filesWep.roles) then
         return filesWep.roles
     end
@@ -99,15 +92,12 @@ local function GetAvailableRoles(filesWep)
     return {}
 end
 
---- Pick the best role from available options.
 local function PickBestRole(availableRoles)
     if #availableRoles == 0 then return nil end
 
-    -- Try preferred roles first
     for _, preferred in ipairs(PREFERRED_ROLES) do
         for _, available in ipairs(availableRoles) do
             local roleIdx = available
-            -- Handle if it's stored as a table entry with an index field
             if istable(available) then
                 roleIdx = available.index or available.role or available[1]
             end
@@ -117,7 +107,6 @@ local function PickBestRole(availableRoles)
         end
     end
 
-    -- No preferred role found — just pick the first available
     local first = availableRoles[1]
     if istable(first) then
         return first.index or first.role or first[1]
@@ -125,12 +114,10 @@ local function PickBestRole(availableRoles)
     return first
 end
 
---- Attempt to transform the bot using The Copycat Files.
 local function TryTransform(bot, filesWep, targetRole)
     if not (IsValid(bot) and IsValid(filesWep)) then return false end
     if not targetRole then return false end
 
-    -- Try the addon's role change methods
     if filesWep.ChangeRole and isfunction(filesWep.ChangeRole) then
         filesWep:ChangeRole(targetRole)
         return true
@@ -141,7 +128,6 @@ local function TryTransform(bot, filesWep, targetRole)
         return true
     end
 
-    -- Fallback: TTT2 role change
     if bot.SetRole then
         local roleData = roles.GetByIndex(targetRole)
         if roleData then
@@ -170,7 +156,6 @@ hook.Add("Think", "TTTBots.copycat.autoTransform", function()
     for _, bot in pairs(TTTBots.Bots) do
         if not (IsValid(bot) and bot:IsBot() and lib.IsPlayerAlive(bot)) then continue end
         if not IsCopycat(bot) then continue end
-
         if (bot.tttbots_copycatLastChange or 0) > curTime then continue end
 
         local filesWep = GetCopycatFiles(bot)
@@ -182,7 +167,6 @@ hook.Add("Think", "TTTBots.copycat.autoTransform", function()
         local bestRole = PickBestRole(available)
         if not bestRole then continue end
 
-        -- Stagger transforms so bots don't all change at once
         local delay = math.random(2, 8)
         bot.tttbots_copycatLastChange = curTime + delay
 
@@ -191,7 +175,6 @@ hook.Add("Think", "TTTBots.copycat.autoTransform", function()
 
             local success = TryTransform(bot, filesWep, bestRole)
             if success then
-                -- Announce transformation
                 local chatter = bot:BotChatter()
                 if chatter then
                     chatter:On("CopycatTransformed", {}, false)
@@ -201,7 +184,7 @@ hook.Add("Think", "TTTBots.copycat.autoTransform", function()
     end
 end)
 
--- Clean up state when Copycat transforms.
+-- Clean up state on transformation.
 hook.Add("TTT2UpdateSubrole", "TTTBots.copycat.conversion", function(ply, oldRole, newRole)
     if not (IsValid(ply) and ply:IsBot()) then return end
     if oldRole ~= ROLE_COPYCAT then return end

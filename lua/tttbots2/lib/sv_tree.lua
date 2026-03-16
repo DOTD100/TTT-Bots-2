@@ -203,6 +203,7 @@ function TTTBots.Behaviors.RunTreeOnBots()
     local RunTree = TTTBots.Behaviors.RunTree
     local GetTreeFor = TTTBots.Behaviors.GetTreeFor
     for _, bot in ipairs(bots) do
+        if not IsValid(bot) then continue end
         RunTree(bot, GetTreeFor(bot))
     end
 end

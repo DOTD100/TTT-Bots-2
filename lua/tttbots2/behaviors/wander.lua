@@ -54,7 +54,7 @@ function Wander.StareAtNearbyPlayers(bot, locomotor)
     local closest = lib.GetClosest(players, bot:GetPos())
 
     if closest then
-        locomotor:LookAt(closest:GetPos())
+        locomotor:LookAt(closest:EyePos())
     end
 end
 

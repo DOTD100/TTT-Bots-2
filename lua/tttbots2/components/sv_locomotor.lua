@@ -71,6 +71,7 @@ function BotLocomotor:Initialize(bot)
     self.crouchJump = false          -- True when the bot needs to crouch-jump (IN_JUMP + IN_DUCK on ground)
     self.stuckJumpAttempts = 0       -- Escalation counter: repeated stuck jumps → crouch-jump
     self.dontmove = false
+    self.sprintReleaseTime = 0       -- Toggle timer for IN_SPEED (must release periodically)
 
     self.doorStandPos = nil
     self.targetDoor = nil
@@ -663,7 +664,7 @@ function BotLocomotor:UpdateADS()
         local shouldAim = bot:Visible(target)
         local distToTarget = bot:GetPos():Distance(target:GetPos())
         local pitchDiff, yawDiff = self:GetEyeAngleDiffTo(target:GetPos())
-        if distToTarget < 200 or yawDiff > 25 then shouldAim = false end
+        if distToTarget < 200 or yawDiff > 25 or pitchDiff > 30 then shouldAim = false end
         self:SetIsADS(shouldAim)
     else
         self:SetIsADS(false)
@@ -704,8 +705,9 @@ function BotLocomotor:AvoidPlayers()
 
     for i = 1, #plys do
         local other = plys[i]
+        if not IsValid(other) then continue end
         if other == self.bot then continue end
-        if self.bot.attackTarget == other then continue end -- Don't try to avoid someone we want to kill. Duh!
+        if self.bot.attackTarget == other then continue end
 
         local plypos = other:GetPos()
 
@@ -797,11 +799,15 @@ function BotLocomotor:SetCliffed()
         mask = MASK_SOLID_BRUSHONLY
     })
 
-    -- draw these traces with TTTBots.DebugServer.DrawLineBetween(start, finish, color, lifetime, forceID)
-    -- TTTBots.DebugServer.DrawLineBetween(pos, pos + (right * 50) + down, Color(255, 0, 0))
-    -- TTTBots.DebugServer.DrawLineBetween(pos, pos - (right * 50) + down, Color(255, 0, 0))
+    local forwardTrace = util.TraceLine({
+        start = pos,
+        endpos = pos + (forward * 50) + down,
+        filter = self.bot,
+        mask = MASK_SOLID_BRUSHONLY
+    })
 
-    self.isCliffed = not (rightTrace.Hit and leftTrace.Hit)
+    self.isCliffed = not (rightTrace.Hit and leftTrace.Hit and forwardTrace.Hit)
+    self.isCliffedForward = not forwardTrace.Hit
     self.isCliffedDirection = (rightTrace.Hit and "left") or (leftTrace.Hit and "right") or false
 
     return self.isCliffed
@@ -908,18 +914,15 @@ function BotLocomotor:TryUnstick()
                 self:LookAt(propPos)
 
                 -- After 3+ failed shoves on a breakable, switch to crowbar for more damage
-                if isBreakable and self._propShoveCount >= 3 then
-                    local imgr = self.bot.components and self.bot.components.inventory
-                    if imgr then
-                        imgr:EquipMelee()
-                        imgr:PauseAutoSwitch()
-                        -- Resume auto-switch after a short delay so the bot re-equips its gun
-                        timer.Simple(1.5, function()
-                            if IsValid(self.bot) and imgr then
-                                imgr:ResumeAutoSwitch()
-                            end
-                        end)
-                    end
+                local imgr = self.bot.components and self.bot.components.inventory
+                if isBreakable and self._propShoveCount >= 3 and imgr then
+                    imgr:EquipMelee()
+                    imgr:PauseAutoSwitch()
+                    timer.Simple(1.5, function()
+                        if IsValid(self.bot) and imgr then
+                            imgr:ResumeAutoSwitch()
+                        end
+                    end)
                 end
 
                 -- Attack with whatever we're holding — crowbar shoves, guns bash
@@ -936,39 +939,66 @@ function BotLocomotor:TryUnstick()
         end
     end
 
-    if fwdHitSolid then
-        self:Jump(true)
-        -- If the chest ray also hit, the obstacle is tall — crouch-jump to pull legs up
-        if chestHitSolid then
-            self.crouchJump = true
-        end
-    end
-
-    self:Strafe(
-        (trce2.Hit and "left") or
-        (trce3.Hit and "right") or
-        nil
-    )
-
-    -- Track stuck attempts: if we've been stuck for a while, always crouch-jump
     self.stuckJumpAttempts = (self.stuckJumpAttempts or 0) + 1
-    if self.stuckJumpAttempts >= 3 then
-        self:Jump(true)
-        self.crouchJump = true
-    end
 
-    if math.random(1, 5) == 3 then
-        self:Jump(true)
-        -- Escalate random jumps to crouch-jumps after repeated failures
-        if self.stuckJumpAttempts >= 2 then
+    -- Phase 1: Try strafing around the obstacle first.
+    -- Pick the side with a valid nav area to avoid walking off edges.
+    if fwdHitSolid then
+        local botPos = self.bot:GetPos()
+        local rightDir = bodyfacingdir:Angle():Right()
+        local leftPos = botPos + rightDir * 60
+        local rightPos = botPos - rightDir * 60
+
+        local leftNav = navmesh.GetNearestNavArea(leftPos, false, 100)
+        local rightNav = navmesh.GetNearestNavArea(rightPos, false, 100)
+        local leftOpen = not trce2.Hit and leftNav ~= nil
+        local rightOpen = not trce3.Hit and rightNav ~= nil
+
+        if leftOpen and rightOpen then
+            -- Both sides open, pick the side closer to our goal
+            local goalPos = self.nextPos or self.goalPos
+            if goalPos then
+                local leftDist = leftPos:DistToSqr(goalPos)
+                local rightDist = rightPos:DistToSqr(goalPos)
+                self:Strafe(leftDist < rightDist and "right" or "left")
+            else
+                self:Strafe(math.random(1, 2) == 1 and "left" or "right")
+            end
+        elseif leftOpen then
+            self:Strafe("right")
+        elseif rightOpen then
+            self:Strafe("left")
+        end
+
+        -- Phase 2: After enough failed strafe attempts, start jumping as well.
+        if self.stuckJumpAttempts >= 3 then
+            self:Jump(true)
+            if chestHitSolid then
+                self.crouchJump = true
+            end
+        end
+
+        -- Phase 3: Still stuck after many attempts, do both strafe + crouch-jump.
+        if self.stuckJumpAttempts >= 5 then
+            self:Jump(true)
             self.crouchJump = true
         end
+    else
+        -- Side walls only — strafe away from them
+        self:Strafe(
+            (trce2.Hit and "left") or
+            (trce3.Hit and "right") or
+            nil
+        )
     end
 
     if not (trce1.Hit or trce2.Hit or trce3.Hit) then
-        -- We are still stuck but we can't figure out why. Just strafe in a random direction based off of the current tick.
+        -- Stuck but no rays hit — strafe in an alternating direction
         local direction = (self.tick % 20 == 0) and "left" or "right"
         self:Strafe(direction)
+        if self.stuckJumpAttempts >= 3 then
+            self:Jump(true)
+        end
     end
 end
 
@@ -1216,6 +1246,10 @@ function BotLocomotor:UpdatePathRequest()
     local pathid, pathInfo, status = TTTBots.PathManager.RequestPath(self.bot, botPos, goalPos, false)
 
     if not pathInfo then -- path is impossible
+        if lib.GetConVarBool("debug_pathfinding") then
+            print(string.format("[TTT Bots 2] %s: path request failed (%s)",
+                self.bot:Nick(), tostring(status)))
+        end
         self.cantReachGoal = true
         self.pathRequestWaiting = false
         self.pathRequest = nil
@@ -1323,6 +1357,33 @@ function BotLocomotor:FindNextPos()
         return self:FindNextPos()
     end
 
+    -- Skip ahead if we can see a further node directly (path smoothing).
+    -- Only skip non-ladder nodes to avoid bypassing ladder climb logic.
+    if lastCompleted and nextNode.type ~= "ladder" then
+        for i = #prepPath, 1, -1 do
+            local ahead = prepPath[i]
+            if ahead == nextNode or ahead.completed then continue end
+            if ahead.type == "ladder" then continue end
+
+            local trce = util.TraceLine({
+                start = botEyePos,
+                endpos = ahead.pos + Vector(0, 0, 16),
+                filter = bot,
+                mask = MASK_SOLID_BRUSHONLY
+            })
+
+            if not trce.Hit then
+                -- Mark all intermediate nodes as completed
+                for j = 1, i - 1 do
+                    if not prepPath[j].completed then
+                        prepPath[j].completed = true
+                    end
+                end
+                return ahead.pos, ahead
+            end
+        end
+    end
+
     return nextPos, nextNode
 end
 
@@ -1330,7 +1391,7 @@ end
 ---@package
 function BotLocomotor:FollowPath()
     local hasPath = self:HasPath()
-    if not (hasPath) then return false end
+    if not hasPath then return false end
     if self.goalPos and self:GetXYDist(self.goalPos, self.bot:GetPos()) < 32 then return false end
     local dvlpr = lib.GetDebugFor("pathfinding")
     local bot = self.bot
@@ -1671,12 +1732,12 @@ end
 TTTBots.DoorRateLimiter = {}
 
 function BotLocomotor:TryToggleDoor(cmd)
-    if (TTTBots.Lib.IsTTT2()) then
+    if TTTBots.Lib.IsTTT2() then
         local door = self:DetectDoorNearby()
         if not (door and TTTBots.Lib.IsDoor(door) and not door:IsDoorLocked()) then return end
-	-- #64: Check if the door is even openable.
-	if not door:UseOpensDoor() then return end
-	if not door:PlayerCanOpenDoor() then return end
+        -- #64: Check if the door is even openable.
+        if not door:UseOpensDoor() then return end
+        if not door:PlayerCanOpenDoor() then return end
 
         local doorID = door:EntIndex()
         local lastTime = TTTBots.DoorRateLimiter[doorID] or 0
@@ -1707,25 +1768,22 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
     local TIMESTAMP = CurTime()
     local MYPOS = self.bot:GetPos()
 
-
-    -- SetButtons to IN_DUCK if crouch is true 🦆
+    -- Crouch
     cmd:SetButtons(
         (self:IsTryingCrouch() or self.crouchJump) and IN_DUCK or 0
     )
 
-    --- 🦘 Set buttons for jumping if :GetJumping() is true
-    --- The way jumping works is a little quirky, as it cannot be held down. We must release it occasionally
-    if self:IsTryingJump() and (self.jumpReleaseTime < TIMESTAMP) or self.jumpReleaseTime == nil then
+    -- Jump (must release occasionally, can't hold)
+    if self:IsTryingJump() and (self.jumpReleaseTime == nil or self.jumpReleaseTime < TIMESTAMP) then
         local onGround = self.bot:OnGround()
-        if self.crouchJump then
-            -- Crouch-jump: press both simultaneously for maximum height.
-            -- This works on ground (launch frame) AND in air (pull legs up).
-            cmd:SetButtons(IN_JUMP + IN_DUCK)
-        elseif not onGround then
-            -- Regular jump, airborne: duck to pull legs up for clearance
+        if not onGround then
+            -- Airborne: only duck to pull legs up, don't press jump again (avoids double jump spam)
+            cmd:SetButtons(IN_DUCK)
+        elseif self.crouchJump then
+            -- Crouch-jump from ground: press both simultaneously for maximum height
             cmd:SetButtons(IN_JUMP + IN_DUCK)
         else
-            -- Regular jump, on ground: just jump
+            -- Regular jump from ground
             cmd:SetButtons(IN_JUMP)
         end
         self.jumpReleaseTime = TIMESTAMP + 0.1
@@ -1735,15 +1793,15 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
         end
     end
 
-    --- 🏃 WALK TOWARDS NEXT POSITION ON PATH (OR IMMEDIATE PRIORITY GOAL), IF WE HAVE ONE
-    if self:HasPath() and not self:GetPriorityGoal() then
+    -- Walk towards next path position or priority goal
+    if hasPath and not self:GetPriorityGoal() then
         self:InterpolateMovement(self.moveInterpRate, self.nextPos)
     elseif self:GetPriorityGoal() then
         self:InterpolateMovement(self.moveInterpRate, self:GetPriorityGoal())
         if DVLPR_PATHFINDING then TTTBots.DebugServer.DrawCross(self.movePriorityVec, 10, Color(0, 255, 255)) end
     end
 
-    --- 🏃 MANAGE REPEL FORCES
+    -- Repel forces
     if self.repelled then
         local normal = self.repelDir
         local endTime = self.repelStopTime
@@ -1756,35 +1814,30 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
         end
     end
 
-    -- If there is a movement vector,
+    -- Apply movement vector
     if self.movementVec then
         local dist = self:GetXYDist(self.movementVec, MYPOS)
-        -- If the distance is less than 16, set the movement vector to nil. We have reached our destination.
         if dist < 16 then
             self.movementVec = nil
         else
-            -- Calculate the movement angles using the movement vector and the bot's position
             local ang = (self.movementVec - MYPOS):Angle()
-            -- If debug mode is enabled, draw a cross at the movement vector
             if DVLPR_PATHFINDING then
                 TTTBots.DebugServer.DrawCross(self.movementVec, 5, Color(255, 255, 255), nil,
                     self.bot:Nick() .. "movementVec")
             end
-            -- Set the view angles using the movement angles
             cmd:SetViewAngles(ang)
         end
     end
 
-    --- 📷 SET VIEW ANGLES USING HELPER FUNCTION
+    -- View angles
     self:UpdateEyeAnglesFinal()
 
-    --- 🏃 STRAFESTR FOR LADDER + STRAFE CALCS
     local strafeStr = self:GetStrafe()
 
-    --- 🪜 MANAGE LADDER MOVEMENT
+    -- Ladder movement
     local dismount = self:GetDismount()
     local climbDir = self:GetClimbDir()
-    if self:IsOnLadder() then -- Ladder movement
+    if self:IsOnLadder() then
         local strafe_dir = (strafeStr == "left" and IN_MOVELEFT) or (strafeStr == "right" and IN_MOVERIGHT) or
             0
         cmd:SetButtons(IN_FORWARD + strafe_dir)
@@ -1801,9 +1854,8 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
         or 0
     )
 
-    --- 🏃 STRAFE CALCULATIONS
-    local side = cmd:GetSideMove()
-    side = (strafeStr == "left" and -400)
+    -- Strafe
+    local side = (strafeStr == "left" and -400)
         or (strafeStr == "right" and 400)
         or 0
     local forceForward = self:GetForceForward() or self.repelled
@@ -1823,7 +1875,7 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
         end
     end
 
-    --- 🏃 MANAGE MOVEMENT SIDE/FORWARD
+    -- Movement side/forward
     local hasMoveVec = self.movementVec ~= nil
     cmd:SetSideMove(side)
     local forwardDir = (
@@ -1833,7 +1885,7 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
     )
     cmd:SetForwardMove(forwardDir)
 
-    --- 🚪 MANAGE BOT DOOR HANDLING
+    -- Door handling
     if self:GetUsing() and self:TestDoorTimer() then
         if DVLPR_PATHFINDING then
             TTTBots.DebugServer.DrawText(MYPOS, "Opening door", Color(255, 255, 255))
@@ -1841,14 +1893,13 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
         self:TryToggleDoor(cmd)
     end
 
-    --- 🔫 MANAGE ATTACKING OF THE BOT
+    -- Attacking
     if (
             (self.reactionDelay or 0) < TIMESTAMP
             and (self.attack or self.attack2)
         ) then
-        -- stop attack from interrupting reload
         local currentWep = self.bot.components.inventory:GetHeldWeaponInfo() ---@type WeaponInfo
-        local preventFire = self:TestShouldPreventFire() -- For compatibility with modded guns, sometimes we need to let go for a second to fire again.
+        local preventFire = self:TestShouldPreventFire()
         local needsReload = (currentWep and currentWep.needs_reload) or false
         if (
                 not preventFire
@@ -1861,20 +1912,26 @@ function BotLocomotor:StartCommand(cmd) -- aka StartCmd
         end
     end
 
-    --- 🔫 MANAGE RELOADING OF THE BOT
+    -- Reloading
     if self.reload then
         cmd:SetButtons(cmd:GetButtons() + IN_RELOAD)
         self.reload = false
     end
 
-    --- 🤚 MANAGE USE KEY (for interacting with players/entities via +USE)
+    -- Use key
     if self.pressUse then
         cmd:SetButtons(cmd:GetButtons() + IN_USE)
         self.pressUse = false
     end
 
-    -- TODO: use IN_SPEED to sprint around. cannot be held down constantly or else it won't work.
-    cmd:SetButtons(cmd:GetButtons())
+    -- Sprint when moving forward and not attacking or reloading
+    local isMovingForward = cmd:GetForwardMove() > 0
+    local isAttacking = self.attack or self.attack2
+    local isReloading = self.reload
+    if isMovingForward and not isAttacking and not isReloading and TIMESTAMP > self.sprintReleaseTime then
+        cmd:SetButtons(cmd:GetButtons() + IN_SPEED)
+        self.sprintReleaseTime = TIMESTAMP + 0.3
+    end
 
     self.moveNormal = cmd:GetViewAngles():Forward()
 end

@@ -105,7 +105,7 @@ function UseHealthStation.OnRunning(bot)
     local distToStation = bot:GetPos():Distance(station:GetPos())
 
     if distToStation < 300 then
-        locomotor:LookAt(station:GetPos())
+        locomotor:LookAt(station:GetPos() + Vector(0, 0, 20))
     end
 
     return STATUS.RUNNING

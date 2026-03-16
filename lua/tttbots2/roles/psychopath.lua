@@ -1,10 +1,7 @@
+--- Psychopath: traitor with access to the detective shop.
+
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_PSYCHOPATH then return false end
-
---- Psychopath: A traitor subrole with access to the detective shop.
---- Behaves identically to a traitor in terms of AI behavior (kills non-allies,
---- coordinates with other traitors, plants C4, uses traps, etc.) but can purchase
---- detective-tier equipment (health stations, defuse kits, stungun, defibrillator).
 
 TEAM_JESTER = TEAM_JESTER or "jesters"
 

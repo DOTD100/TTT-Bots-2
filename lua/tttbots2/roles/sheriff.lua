@@ -1,7 +1,7 @@
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_SHERIFF then return false end
 
-TEAM_INNOCENT = TEAM_INNOCENT or 'innocent'
+TEAM_INNOCENT = TEAM_INNOCENT or "innocents"
 
 local allyRoles = {
     deputy = true

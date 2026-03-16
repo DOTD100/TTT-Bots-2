@@ -123,7 +123,7 @@ BotInventory.kindHash = {
     [7] = "special",
     [8] = "extra",
     [9] = "class",
-    
+
     melee = 1,
     secondary = 2,
     primary = 3,
@@ -330,15 +330,15 @@ function BotInventory:AutoManageInventory()
 
     -- Use an ordered list so we always prefer special > primary > secondary
     local priorityList = {
-        { func = self.EquipSpecial,   info = special },
-        { func = self.EquipPrimary,   info = primary },
-        { func = self.EquipSecondary, info = secondary },
+        { func = self.EquipSpecial,   info = special,   wep = w_special },
+        { func = self.EquipPrimary,   info = primary,   wep = w_primary },
+        { func = self.EquipSecondary, info = secondary, wep = w_secondary },
     }
 
     local foundGun = false
     for _, entry in ipairs(priorityList) do
         local wepInfo = entry.info
-        if wepInfo and (wepInfo.ammo > 0 or wepInfo.clip > 0) then
+        if wepInfo and IsValid(entry.wep) and (wepInfo.ammo > 0 or wepInfo.clip > 0) then
             local success = entry.func(self)
             if success ~= false then
                 foundGun = true
@@ -352,23 +352,19 @@ function BotInventory:AutoManageInventory()
         self:EquipMelee()
     end
 
-    local current = self:GetHeldWeaponInfo()
-    if not (current and current.is_gun) then return end
-
-    local locomotor = self.bot:BotLocomotor()
-    if current.needs_reload then
-        locomotor:StopAttack()
-        locomotor:Reload()
-    end
+    self:ReloadIfNecessary()
 end
 
---- Reload the currently held weapon if it has less ammo in the 1st clip than its maximum, if it also has ammo in reserve.
+--- Reload the currently held weapon if necessary.
+--- When emptyOnly is true, only reload if the clip is completely empty (useful during combat).
+--- Otherwise, reload whenever the clip is not full (useful when idle/seeking).
+---@param emptyOnly? boolean Only reload when the clip is empty. Defaults to false.
 ---@return boolean reloading If we are reloading
-function BotInventory:ReloadIfNecessary()
+function BotInventory:ReloadIfNecessary(emptyOnly)
     local heldWep = self:GetHeldWeaponInfo(self.bot)
     if not (heldWep and heldWep.is_gun) then return false end
 
-    local reload = heldWep.should_reload
+    local reload = emptyOnly and heldWep.needs_reload or heldWep.should_reload
 
     if reload then
         local loco = self.bot:BotLocomotor() ---@type CLocomotor

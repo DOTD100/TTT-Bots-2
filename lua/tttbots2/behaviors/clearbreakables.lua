@@ -1,9 +1,9 @@
---- This behavior sucks and it deserves to be rewritten, integrated with the loco, and/or removed entirely.
---- But I'm not going to do that right now. Too bad!
+--- ClearBreakables: proactively attack breakable entities blocking the bot's path.
+
 ---@class BBreaker
 TTTBots.Behaviors.ClearBreakables = {}
 
-local lib = TTTBots.Lib
+-- local lib = TTTBots.Lib
 
 ---@class BBreaker
 local Breaker = TTTBots.Behaviors.ClearBreakables
@@ -13,71 +13,50 @@ Breaker.Interruptible = true
 
 local STATUS = TTTBots.STATUS
 
---- Validate the behavior
-function Breaker.Validate(bot)
-    if not IsValid(bot) then return false end
-    local startPos = bot:EyePos()
-    local endPos = startPos + (bot:GetAimVector() * 64)
-    local traceResult = util.TraceLine({
-        start = startPos,
-        endpos = endPos,
+local function TraceForBreakable(bot)
+    local trce = util.TraceLine({
+        start = bot:EyePos(),
+        endpos = bot:EyePos() + bot:GetAimVector() * 64,
         filter = bot,
     })
 
-    return traceResult.Hit and IsValid(traceResult.Entity) and
-        TTTBots.Components.ObstacleTracker.BreakablesSet[traceResult.Entity] and
-        (traceResult.Entity:Health() > 0 and traceResult.Entity:Health() < 500)
+    local ent = trce.Entity
+    if not trce.Hit or not IsValid(ent) then return nil end
+    if not TTTBots.Components.ObstacleTracker.BreakablesSet[ent] then return nil end
+    if ent:Health() <= 0 or ent:Health() >= 500 then return nil end
+
+    return ent
 end
 
---- Called when the behavior is started
+function Breaker.Validate(bot)
+    if not IsValid(bot) then return false end
+    return TraceForBreakable(bot) ~= nil
+end
+
 function Breaker.OnStart(bot)
     return STATUS.RUNNING
 end
 
---- Called when the behavior's last state is running
 function Breaker.OnRunning(bot)
-    local startPos = bot:EyePos()
-    local endPos = startPos + (bot:GetAimVector() * 64)
-    local traceResult = util.TraceLine({
-        start = startPos,
-        endpos = endPos,
-        filter = bot,
-    })
+    local target = TraceForBreakable(bot)
+    if not target then return STATUS.FAILURE end
 
-    local closest = traceResult.Entity
-
-    -- If the line trace did not hit a valid breakable, return failure
-    if not traceResult.Hit or not IsValid(closest) or closest:Health() <= 0 then
-        return STATUS.FAILURE
-    end
-
-    ---@type CLocomotor
     local loco = bot:BotLocomotor()
-    ---@type CInventory
-    local imgr = bot.components.inventory
-    loco:LookAt(closest:GetPos(), 0.5)
-    imgr:EquipMelee()
-    imgr:PauseAutoSwitch()
+    local inv = bot.components.inventory
+
+    loco:LookAt(target:GetPos(), 0.5)
+    inv:EquipMelee()
+    inv:PauseAutoSwitch()
     loco:StartAttack()
-    loco:SetPriorityGoal(closest:GetPos(), 8) -- 8 is distance threshold
+    loco:SetPriorityGoal(target:GetPos(), 8)
+
     return STATUS.RUNNING
 end
 
---- Called when the behavior returns a success state
-function Breaker.OnSuccess(bot)
-    local loco = bot:BotLocomotor()
-    loco:StopAttack()
-end
+function Breaker.OnSuccess(bot) end
+function Breaker.OnFailure(bot) end
 
---- Called when the behavior returns a failure state
-function Breaker.OnFailure(bot)
-    local loco = bot:BotLocomotor()
-    loco:StopAttack()
-end
-
---- Called when the behavior ends, regardless of success or failure
 function Breaker.OnEnd(bot)
-    local loco = bot:BotLocomotor()
     bot.components.inventory:ResumeAutoSwitch()
-    loco:StopAttack()
+    bot:BotLocomotor():StopAttack()
 end

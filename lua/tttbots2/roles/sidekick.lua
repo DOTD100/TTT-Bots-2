@@ -1,12 +1,13 @@
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_SIDEKICK then return false end
 
-local allyTeams = {
-    [TEAM_JESTER] = true,
-}
+TEAM_JACKAL = TEAM_JACKAL or "jackal"
+TEAM_JESTER = TEAM_JESTER or "jesters"
+TEAM_SIDEKICK = TEAM_SIDEKICK or "sidekick"
 
-local allyRoles = {
-    jackal = true
+local allyTeams = {
+    [TEAM_JACKAL] = true,
+    [TEAM_JESTER] = true,
 }
 
 local _bh = TTTBots.Behaviors
@@ -22,7 +23,7 @@ local bTree = {
 local sidekick = TTTBots.RoleData.New("sidekick", TEAM_SIDEKICK)
 sidekick:SetDefusesC4(false)
 sidekick:SetCanCoordinate(false)
-sidekick:SetStartsFights(false)
+sidekick:SetStartsFights(true)
 sidekick:SetUsesSuspicion(false)
 sidekick:SetTeam(TEAM_SIDEKICK)
 sidekick:SetAlliedTeams(allyTeams)

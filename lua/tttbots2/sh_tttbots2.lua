@@ -38,7 +38,6 @@ local function includeServer()
     include("tttbots2/lib/sv_tree.lua")
     include("tttbots2/lib/sv_buyables.lua")
     include("tttbots2/lib/sv_roles.lua")
-    include("tttbots2/lib/sv_compat_hidden.lua")
 end
 
 --- Similar to includeSharedFile, will include the file if we're a client, otherwise will AddCSLuaFile it if we're a server.
@@ -89,7 +88,16 @@ util.AddNetworkString("TTTBots_SpectateModeChanged")
 util.AddNetworkString("TTTBots_QuerySpectateMode")
 
 local hasNavmesh = function() return navmesh.GetNavAreaCount() > 0 end
-local alreadyAddedResources = false
+
+-- Register avatar files for client download immediately at load time.
+-- resource.AddFile must be called early during server startup to work.
+local f = string.format
+for i = 0, 5 do
+    resource.AddFile(f("materials/avatars/%d.png", i))
+end
+for i = 0, 87 do
+    resource.AddFile(f("materials/avatars/humanlike/%d.jpg", i))
+end
 
 ---Load all of the mod's depdenencies and initialize the mod
 function TTTBots.Reload()
@@ -103,15 +111,13 @@ function TTTBots.Reload()
 
     -- Bot behavior
     timer.Create("TTTBots_Tick", 1 / TTTBots.Tickrate, 0, function()
-        local call, err = pcall(function()
-            -- _testBotAttack()
+        local ok, err = xpcall(function()
             TTTBots.Match.Tick()
             TTTBots.Behaviors.RunTreeOnBots()
             TTTBots.PlanCoordinator.Tick()
             local bots = TTTBots.Bots
             for i, bot in ipairs(bots) do
-                -- TTTBots.DebugServer.RenderDebugFor(bot, { "all" })
-                if not (IsValid(bot) and bot and bot.components) then continue end -- Sometimes a weird bug or edge case occurs, just ignore it
+                if not (IsValid(bot) and bot and bot.components) then continue end
 
                 for _, component in pairs(bot.components) do
                     if component.Think == nil then continue end
@@ -123,10 +129,10 @@ function TTTBots.Reload()
                 bot.timeInGame = (bot.timeInGame or 0) + (1 / TTTBots.Tickrate)
             end
             TTTBots.Lib.UpdateBotModels()
-        end, function(err)
-            print("ERROR:", err)
+        end, function(errMsg)
+            return errMsg
         end)
-        if err then
+        if not ok then
             ErrorNoHaltWithStack(err)
         end
     end)
@@ -163,19 +169,6 @@ function TTTBots.Reload()
         end
     end)
 
-    -- Send avatars to clients
-    if alreadyAddedResources then return end
-    alreadyAddedResources = true
-
-    local f = string.format
-
-    for i = 0, 5 do
-        resource.AddFile(f("materials/avatars/%d.png", i))
-    end
-
-    for i = 0, 87 do
-        resource.AddFile(f("materials/avatars/humanlike/%d.jpg", i))
-    end
 end
 
 local initChecks = {}

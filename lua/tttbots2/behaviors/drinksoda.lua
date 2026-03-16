@@ -237,7 +237,7 @@ timer.Create("TTTBots.DrinkSoda.UseNearbySodas", 0.33, 0, function()
             -- Force look down at the soda right before using it
             local loco = bot:BotLocomotor()
             if loco then
-                loco:LookAt(soda:GetPos())
+                loco:LookAt(soda:GetPos() + Vector(0, 0, 10))
             end
 
             -- Use the soda entity

@@ -1,4 +1,5 @@
---- Arsonist role definition.
+--- Arsonist: traitor with a flamethrower, always burns corpses.
+
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_ARSONIST then return false end
 
@@ -12,7 +13,6 @@ local allyTeams = {
 local _bh = TTTBots.Behaviors
 local _prior = TTTBots.Behaviors.PriorityNodes
 
---- Custom FightBack that prefers the flamethrower
 local ArsonistFightBack = {
     _bh.ClearBreakables,
     _bh.ThrowGrenade,
@@ -51,7 +51,7 @@ arsonist:SetAutoSwitch(false)
 arsonist:SetPreferredWeapon("weapon_ttt2_arsonthrower")
 TTTBots.Roles.RegisterRole(arsonist)
 
---- Arsonist always has bodyBurner trait.
+-- Arsonist always has the bodyBurner trait.
 local origGetTraitBool = FindMetaTable("Player").GetTraitBool
 if origGetTraitBool then
     FindMetaTable("Player").GetTraitBool = function(self, attribute, falseHasPriority)
@@ -65,7 +65,7 @@ if origGetTraitBool then
     end
 end
 
---- Add "arsonist" to the FlareGun buyable so they can purchase it.
+-- Register arsonist as a FlareGun buyer.
 timer.Simple(0, function()
     local registry = TTTBots.Buyables and TTTBots.Buyables.Registry
     if registry and registry.FlareGun and registry.FlareGun.Roles then

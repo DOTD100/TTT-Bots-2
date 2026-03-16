@@ -182,7 +182,7 @@ function PickupLoot.OnRunning(bot)
 
     local dist = bot:GetPos():Distance(targetPos)
     if dist < 300 then
-        loco:LookAt(targetPos)
+        loco:LookAt(targetPos + Vector(0, 0, 10))
     end
 
     return STATUS.RUNNING

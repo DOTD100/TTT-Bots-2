@@ -12,7 +12,7 @@ local bTree = {
     _bh.Defuse,
     _prior.Restore,
     _prior.Minge,
-    _bh.Investigate,
+    _prior.Investigate,
     _bh.Decrowd,
     _prior.Patrol
 }

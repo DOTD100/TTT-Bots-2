@@ -1,3 +1,5 @@
+--- Beggar: jester-team role that converts to innocent or traitor via shop item pickup.
+
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_BEGGAR then return false end
 
@@ -5,13 +7,12 @@ TEAM_JESTER = TEAM_JESTER or "jesters"
 
 local allyTeams = {
     [TEAM_JESTER] = true,
-    [TEAM_TRAITOR] = true, -- Traitors know Beggar is Jester-team, won't attack
+    [TEAM_TRAITOR] = true,
 }
 
 local _bh = TTTBots.Behaviors
 local _prior = TTTBots.Behaviors.PriorityNodes
 
---- Pre-conversion behavior tree: passive, no damage.
 local bTreePreConvert = {
     _bh.BeggarScavenge,
     _prior.Restore,
@@ -37,9 +38,7 @@ beggar:SetCanSnipe(false)
 beggar:SetCanHide(false)
 TTTBots.Roles.RegisterRole(beggar)
 
--- Detect when the Beggar's team changes (shop item pickup converts them).
--- Per-bot btree override so only the converted bot changes behavior.
-
+-- Post-conversion behavior trees.
 local function GetInnocentTree()
     return {
         _prior.FightBack,
@@ -68,7 +67,7 @@ local function GetTraitorTree()
     }
 end
 
---- Patch GetTreeFor to check for a per-bot override first.
+-- Per-bot btree override for converted beggars.
 local origGetTreeFor = TTTBots.Behaviors._origGetTreeFor or TTTBots.Behaviors.GetTreeFor
 TTTBots.Behaviors._origGetTreeFor = origGetTreeFor
 
@@ -79,12 +78,10 @@ function TTTBots.Behaviors.GetTreeFor(bot)
     return origGetTreeFor(bot)
 end
 
---- Periodically check if any Beggar bots have had their team changed by the addon.
---- When detected, set a per-bot btree override (does NOT touch the shared role data).
+-- Detect team changes from shop item pickup.
 hook.Add("Think", "TTTBots.Beggar.ConversionCheck", function()
     if not TTTBots.Match.IsRoundActive() then return end
 
-    -- Throttle: check once per second
     local now = CurTime()
     if (TTTBots._beggarLastCheck or 0) + 1 > now then return end
     TTTBots._beggarLastCheck = now
@@ -94,10 +91,7 @@ hook.Add("Think", "TTTBots.Beggar.ConversionCheck", function()
         if not (bot.GetSubRole and bot:GetSubRole() == ROLE_BEGGAR) then continue end
 
         local team = bot:GetTeam()
-        -- Skip pre-conversion state (unknownTeam reports TEAM_NONE)
         if team == TEAM_JESTER or team == "jesters" or team == TEAM_NONE or team == "none" then continue end
-
-        -- Already handled this conversion?
         if bot.beggarConvertedTeam == team then continue end
         bot.beggarConvertedTeam = team
 
@@ -111,7 +105,7 @@ hook.Add("Think", "TTTBots.Beggar.ConversionCheck", function()
     end
 end)
 
---- Reset per-bot overrides each round (shared role data stays untouched).
+-- Reset per-bot overrides each round.
 hook.Add("TTTBeginRound", "TTTBots.Beggar.RoundReset", function()
     for _, bot in ipairs(player.GetBots()) do
         bot.beggarConvertedTeam = nil

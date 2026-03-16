@@ -1,7 +1,7 @@
 if not TTTBots.Lib.IsTTT2() then return false end
 if not ROLE_DRUNK then return false end
 
--- Drunk is extremely simple. Just stay out of trouble until you get your real role. -Z
+--- Drunk: stays out of trouble until assigned a real role.
 local _bh = TTTBots.Behaviors
 local _prior = TTTBots.Behaviors.PriorityNodes
 local bTree = {
